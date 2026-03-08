@@ -28,6 +28,8 @@ public partial class App : Application
             
             mainWindow.DataContext = new MainWindowViewModel(clipboardService, repository);
             desktop.MainWindow = mainWindow;
+            
+            AutoStartManager.RegisterAutoStart();
         }
 
         base.OnFrameworkInitializationCompleted();

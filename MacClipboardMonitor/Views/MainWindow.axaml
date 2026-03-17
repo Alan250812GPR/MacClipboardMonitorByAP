@@ -1,11 +1,13 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:MacClipboardMonitor.ViewModels"
+        xmlns:models="using:MacClipboardMonitor.Models"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="350" d:DesignHeight="550"
         x:Class="MacClipboardMonitor.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
+        x:Name="RootWindow"
         Icon="/Assets/avalonia-logo.ico"
         Title="MacClipboardMonitor"
         
@@ -28,14 +30,17 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/> </Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/> 
+                </Grid.ColumnDefinitions>
 
                 <TextBlock Grid.Column="0" 
                            Text="Portapapeles" 
                            FontSize="20" 
                            FontWeight="Bold" 
                            VerticalAlignment="Center" 
-                           IsHitTestVisible="False" /> <Button Grid.Column="1" 
+                           IsHitTestVisible="False" /> 
+                
+                <Button Grid.Column="1" 
                         Command="{Binding ClearHistoryCommand}"
                         Background="Transparent"
                         BorderThickness="0"
@@ -68,18 +73,39 @@
                 </ListBox.Styles>
                 
                 <ListBox.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="models:ClipboardItem">
                         <Border CornerRadius="8" 
-                                Padding="14"
+                                Padding="12"
                                 Margin="0,0,0,8"
                                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
                                 BorderThickness="1"
                                 Cursor="Hand">
-                            <TextBlock Text="{Binding Content}" 
-                                       TextWrapping="Wrap" 
-                                       TextTrimming="CharacterEllipsis"
-                                       MaxHeight="60" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" 
+                                           Text="{Binding Content}" 
+                                           TextWrapping="Wrap" 
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxHeight="60" 
+                                           Margin="0,0,8,0" />
+
+                                <Button Grid.Column="1"
+                                        VerticalAlignment="Top"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Padding="4"
+                                        Cursor="Hand"
+                                        ToolTip.Tip="Borrar este elemento"
+                                        Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).DeleteItemCommand}"
+                                        CommandParameter="{Binding}">
+                                    <TextBlock Text="✕" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="14" FontWeight="Bold" />
+                                </Button>
+                            </Grid>
                         </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

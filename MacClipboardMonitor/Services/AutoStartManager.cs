@@ -23,7 +23,8 @@ public static class AutoStartManager
                 Directory.CreateDirectory(launchAgentsDir);
             }
 
-            // 2. Construir el XML de configuración dinámicamente con la ruta actual
+            // 2. Construir el XML de configuración. 
+            // NOTA: Se eliminó <key>KeepAlive</key> para que el usuario pueda cerrar la app manualmente.
             string plistContent = $@"<?xml version=""1.0"" encoding=""UTF-8""?>
 <!DOCTYPE plist PUBLIC ""-//Apple//DTD PLIST 1.0//EN"" ""http://www.apple.com/DTDs/PropertyList-1.0.dtd"">
 <plist version=""1.0"">
@@ -36,14 +37,24 @@ public static class AutoStartManager
     </array>
     <key>RunAtLoad</key>
     <true/>
-    <key>KeepAlive</key>
-    <true/>
 </dict>
 </plist>";
 
-            // 3. Si el archivo no existe o la ruta cambió (el usuario movió la app), lo actualizamos
-            if (!File.Exists(plistPath) || !File.ReadAllText(plistPath).Contains(executablePath))
+            // 3. Si el archivo no existe o la ruta cambió, lo actualizamos
+            if (!File.Exists(plistPath) || !File.ReadAllText(plistPath).Contains(executablePath) || File.ReadAllText(plistPath).Contains("KeepAlive"))
             {
+                // Si existía una versión anterior agresiva, intentamos descargarla primero
+                if (File.Exists(plistPath))
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "launchctl",
+                        Arguments = $"unload -w {plistPath}",
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    })?.WaitForExit(2000); // Esperar un par de segundos máximo a que se descargue
+                }
+
                 File.WriteAllText(plistPath, plistContent);
                 
                 // 4. Le decimos a macOS que cargue el demonio silenciosamente

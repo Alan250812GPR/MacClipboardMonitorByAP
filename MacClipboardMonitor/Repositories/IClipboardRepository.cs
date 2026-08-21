@@ -10,4 +10,5 @@ public interface IClipboardRepository
     Task AddItemAsync(ClipboardItem item);
     Task DeleteItemAsync(int id);
     Task ClearAllAsync();
+    Task PurgeExpiredAsync();
 }

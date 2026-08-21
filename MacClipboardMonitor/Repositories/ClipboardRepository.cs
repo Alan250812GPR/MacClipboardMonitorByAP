@@ -19,6 +19,8 @@ public class ClipboardRepository : IClipboardRepository
 
     public async Task<List<ClipboardItem>> GetRecentItemsAsync(int limit = 50)
     {
+        await PurgeExpiredAsync();
+
         return await _dbContext.ClipboardItems
             .OrderByDescending(x => x.CreatedAt)
             .Take(limit)
@@ -27,23 +29,45 @@ public class ClipboardRepository : IClipboardRepository
 
     public async Task AddItemAsync(ClipboardItem item)
     {
-        // 1. Anti-duplicados estricto para texto
-        bool exists = await _dbContext.ClipboardItems
-            .AnyAsync(x => x.Content.ToLower() == item.Content.ToLower());
+        // 1. Anti-duplicados según el tipo de contenido
+        switch (item.Type)
+        {
+            case ClipboardItemType.Texto:
+                bool textExists = await _dbContext.ClipboardItems
+                    .AnyAsync(x => x.Type == ClipboardItemType.Texto &&
+                                   x.Content.ToLower() == item.Content.ToLower());
+                if (textExists) return;
+                break;
 
-        if (exists) return;
+            case ClipboardItemType.Imagen:
+                if (!string.IsNullOrEmpty(item.ImageHash))
+                {
+                    bool imageExists = await _dbContext.ClipboardItems
+                        .AnyAsync(x => x.Type == ClipboardItemType.Imagen &&
+                                       x.ImageHash == item.ImageHash);
+                    if (imageExists) return;
+                }
+                break;
 
-        // 2. Regla de 48 horas
-        var cutoffDate = DateTime.Now.AddHours(-48);
-        await _dbContext.ClipboardItems
-            .Where(x => x.CreatedAt < cutoffDate)
-            .ExecuteDeleteAsync();
+            case ClipboardItemType.Archivo:
+                if (!string.IsNullOrEmpty(item.FilePaths))
+                {
+                    bool fileExists = await _dbContext.ClipboardItems
+                        .AnyAsync(x => x.Type == ClipboardItemType.Archivo &&
+                                       x.FilePaths == item.FilePaths);
+                    if (fileExists) return;
+                }
+                break;
+        }
+
+        // 2. Limpieza por caducidad: texto >48h, imagen/archivo >1h
+        await PurgeExpiredAsync();
 
         // 3. Guardar el nuevo elemento
         _dbContext.ClipboardItems.Add(item);
         await _dbContext.SaveChangesAsync();
 
-        // 4. Límite de seguridad
+        // 4. Límite de seguridad global
         var count = await _dbContext.ClipboardItems.CountAsync();
         if (count > 50)
         {
@@ -70,5 +94,17 @@ public class ClipboardRepository : IClipboardRepository
     public async Task ClearAllAsync()
     {
         await _dbContext.ClipboardItems.ExecuteDeleteAsync();
+    }
+
+    public async Task PurgeExpiredAsync()
+    {
+        var now = DateTime.Now;
+        var textCutoff = now.AddHours(-48);
+        var fileCutoff = now.AddHours(-1);
+
+        await _dbContext.ClipboardItems
+            .Where(x => (x.Type == ClipboardItemType.Texto && x.CreatedAt < textCutoff) ||
+                        (x.Type != ClipboardItemType.Texto && x.CreatedAt < fileCutoff))
+            .ExecuteDeleteAsync();
     }
 }

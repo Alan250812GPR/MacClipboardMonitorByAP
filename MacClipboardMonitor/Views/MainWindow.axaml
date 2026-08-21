@@ -147,16 +147,46 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,12,0" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="0" Spacing="6" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <Border IsVisible="{Binding IsImage}"
+                                            Width="60" Height="60"
+                                            CornerRadius="8"
+                                            ClipToBounds="True"
+                                            HorizontalAlignment="Left"
+                                            Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                                        <Image Source="{Binding AvaloniaImage}" Stretch="UniformToFill" />
+                                    </Border>
+
                                     <TextBlock Text="{Binding Content}" 
+                                               IsVisible="{Binding IsText}"
                                                TextWrapping="Wrap" 
                                                TextTrimming="CharacterEllipsis"
                                                MaxHeight="60" 
                                                FontSize="14"
                                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
-                                    <TextBlock Text="{Binding CreatedAt, StringFormat={}{0:dd/MM HH:mm}}"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+
+                                    <StackPanel IsVisible="{Binding IsFile}" Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="📄" FontSize="16" VerticalAlignment="Top" />
+                                        <TextBlock Text="{Binding FileDisplay}"
+                                                   TextWrapping="Wrap"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxHeight="60"
+                                                   FontSize="14"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border IsVisible="{Binding IsImage}" CornerRadius="4" Padding="6,1" Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
+                                            <TextBlock Text="Imagen" FontSize="10" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
+                                        </Border>
+                                        <Border IsVisible="{Binding IsFile}" CornerRadius="4" Padding="6,1" Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
+                                            <TextBlock Text="Archivo" FontSize="10" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
+                                        </Border>
+                                        <TextBlock Text="{Binding CreatedAt, StringFormat={}{0:dd/MM HH:mm}}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <Button Grid.Column="1"

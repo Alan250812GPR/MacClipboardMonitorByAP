@@ -16,6 +16,7 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly IClipboardMonitorService _clipboardService;
     private readonly IClipboardRepository _repository;
     private readonly IDisposable _clipboardSubscription;
+    private readonly IDisposable _purgeSubscription;
     private readonly SourceList<ClipboardItem> _historyList = new SourceList<ClipboardItem>();
     
     public ICommand ClearHistoryCommand { get; }
@@ -63,20 +64,34 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
             _historyList.Clear();
         });
 
-        // Vuelve a usar ClipboardTextChanged que emite un simple string
-        _clipboardSubscription = _clipboardService.ClipboardTextChanged
+        _clipboardSubscription = _clipboardService.ClipboardChanged
             .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(async newText => 
+            .Subscribe(async capture =>
             {
-                var newItem = new ClipboardItem 
-                { 
-                    Content = newText, 
-                    CreatedAt = DateTime.Now 
+                var newItem = new ClipboardItem
+                {
+                    Type = capture.Type,
+                    Content = capture.Text ?? string.Empty,
+                    ImageBytes = capture.ImageBytes,
+                    ImageHash = capture.ImageHash,
+                    FilePaths = capture.FilePaths is null ? null : string.Join("\n", capture.FilePaths),
+                    CreatedAt = DateTime.Now
                 };
 
-                // 1. BLOQUEO DE DUPLICADOS EN MEMORIA (Ignorando mayúsculas)
-                bool isDuplicate = _historyList.Items.Any(x => 
-                    string.Equals(x.Content, newItem.Content, StringComparison.OrdinalIgnoreCase));
+                // 1. BLOQUEO DE DUPLICADOS EN MEMORIA según el tipo
+                bool isDuplicate = capture.Type switch
+                {
+                    ClipboardItemType.Texto =>
+                        _historyList.Items.Any(x => x.Type == ClipboardItemType.Texto &&
+                                                    string.Equals(x.Content, newItem.Content, StringComparison.OrdinalIgnoreCase)),
+                    ClipboardItemType.Imagen =>
+                        !string.IsNullOrEmpty(newItem.ImageHash) &&
+                        _historyList.Items.Any(x => x.Type == ClipboardItemType.Imagen && x.ImageHash == newItem.ImageHash),
+                    ClipboardItemType.Archivo =>
+                        !string.IsNullOrEmpty(newItem.FilePaths) &&
+                        _historyList.Items.Any(x => x.Type == ClipboardItemType.Archivo && x.FilePaths == newItem.FilePaths),
+                    _ => false
+                };
 
                 if (isDuplicate) return;
 
@@ -91,6 +106,28 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
                     _historyList.RemoveAt(_historyList.Count - 1);
                 }
             });
+
+        // Limpieza periódica: elimina lo caducado de memoria y de la DB.
+        _purgeSubscription = Observable.Interval(TimeSpan.FromMinutes(1))
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(async _ =>
+            {
+                var now = DateTime.Now;
+                var textCutoff = now.AddHours(-48);
+                var fileCutoff = now.AddHours(-1);
+
+                var expired = _historyList.Items
+                    .Where(x => (x.Type == ClipboardItemType.Texto && x.CreatedAt < textCutoff) ||
+                                (x.Type != ClipboardItemType.Texto && x.CreatedAt < fileCutoff))
+                    .ToList();
+
+                foreach (var item in expired)
+                {
+                    _historyList.Remove(item);
+                }
+
+                await _repository.PurgeExpiredAsync();
+            });
     }
 
     private async void LoadHistoryAsync()
@@ -101,14 +138,34 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
 
     private void OnItemSelected(ClipboardItem item)
     {
-        // Solo inyectamos texto
-        _clipboardService.SetText(item.Content);
+        switch (item.Type)
+        {
+            case ClipboardItemType.Texto:
+                _clipboardService.SetText(item.Content);
+                break;
+
+            case ClipboardItemType.Imagen:
+                if (item.ImageBytes is { Length: > 0 })
+                {
+                    _clipboardService.SetImage(item.ImageBytes);
+                }
+                break;
+
+            case ClipboardItemType.Archivo:
+                if (item.FileList.Count > 0)
+                {
+                    _clipboardService.SetFiles(item.FileList);
+                }
+                break;
+        }
+
         SelectedItem = null;
     }
 
     public void Dispose()
     {
         _clipboardSubscription?.Dispose();
+        _purgeSubscription?.Dispose();
         _historyList?.Dispose();
     }
 }

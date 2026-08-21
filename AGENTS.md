@@ -42,6 +42,11 @@ MacClipboardMonitor/
 │   ├── IClipboardMonitorService.cs     # Contrato de monitor de portapapeles
 │   ├── ClipboardCapture.cs             # DTO emitido por el monitor (tipo + payload)
 │   ├── PollingClipboardMonitorService.cs # Polling 750ms con Rx
+│   ├── IPasteService.cs                # Contrato de "pegar directo" (Cmd+V)
+│   ├── MacPasteService.cs              # CGEvent Cmd+V + permiso de Accesibilidad
+│   ├── CodeDetectionService.cs         # Detección heurística de lenguaje (JSON/SQL/...)
+│   ├── AppConfigService.cs             # Config JSON en ~/ (hotkey configurable)
+│   ├── EncryptionService.cs            # AES-256-CBC para entradas encriptadas
 │   └── AutoStartManager.cs             # LaunchAgent para iniciar al login
 ├── Data/
 │   └── AppDbContext.cs                 # DbContext + EnsureCreated + columnas (sin migraciones)
@@ -81,19 +86,28 @@ TrayIcon (App.axaml.cs)
 
 | Tipo        | Deduplicación            | Caducidad | Límite |
 |-------------|--------------------------|-----------|--------|
-| Texto       | `Content` ToLower        | 48 horas  | 50 global |
-| Imagen      | `ImageHash` (SHA256)     | 1 hora    | 50 global |
-| Archivo     | `FilePaths` exacto       | 1 hora    | 50 global |
+| Texto       | `Content` ToLower        | 48 horas  | 100 global |
+| Imagen      | `ImageHash` (SHA256)     | 1 hora    | 100 global |
+| Archivo     | `FilePaths` exacto       | 1 hora    | 100 global |
+| Encriptado  | no aplica                | nunca     | 100 global (no se poda) |
+
+Las entradas encriptadas (`IsEncrypted=true`) son texto marcado por el usuario que
+**nunca caduca** ni es recortado por el límite; solo se borran manualmente. Se guardan
+cifradas en `CipherText` y se descifran al vuelo al copiar (la UI solo muestra `••••••••`).
 
 ## Responsabilidades de cada archivo (clave)
 
 - **MainWindowViewModel.cs**: ÚNICO lugar con lógica de negocio de UI. Contiene:
   - `History` (`ReadOnlyObservableCollection<ClipboardItem>`) ligada a un `SourceList`.
   - `SelectedItem` (setter dispara `OnItemSelected` -> re-copia según tipo).
-  - `ClearHistoryCommand` y `DeleteItemCommand` (ReactiveCommand).
+  - `ClearHistoryCommand`, `DeleteItemCommand`, `EncryptItemCommand`, `OpenImagePreviewCommand`
+    y comandos de Ajustes (hotkey) (ReactiveCommand).
+  - Búsqueda (`SearchText`) con filtro dinámico (`.Filter()` + throttle 250ms).
+  - `CopyItem` descifra entradas encriptadas y suprime su re-captura en texto plano.
   - Dedupe en memoria según tipo y limpieza periódica (timer 1 min) de caducados.
 - **ClipboardRepository.cs**: reglas de persistencia: anti-duplicados según tipo,
-  caducidad (texto 48h, imagen/archivo 1h), límite global 50.
+  caducidad (texto 48h, imagen/archivo 1h), límite global 100. Las encriptadas
+  no caducan ni se podan (`MarkEncryptedAsync`).
 - **PollingClipboardMonitorService.cs**: detecta tipo de contenido (archivo > imagen
   > texto) vía formatos del portapapeles y emite `ClipboardCapture`.
 - **MainWindow.axaml**: SOLO presentación. Toda la lógica vive en el ViewModel.
@@ -149,7 +163,16 @@ dotnet run --project MacClipboardMonitor
 - **Autostart:** `AutoStartManager` crea un LaunchAgent plist (`launchctl`). Ya no
   usa `KeepAlive` para permitir cerrar la app manualmente.
 - **Hook global:** `SharpHook` (`TaskPoolGlobalHook`) se inicializa en el constructor
-  de `MainWindow` y se libera en `OnClosed`. La combinación Ctrl+Cmd+V alterna la ventana.
+  de `MainWindow` y se libera en `OnClosed`. La combinación por defecto es Ctrl+Cmd+V,
+  pero es **configurable** desde Ajustes (⚙️) y se persiste en `~/MacClipboardMonitor.config.json`.
+- **Pegar directo:** el doble clic en una tarjeta copia y simula Cmd+V (CGEvent) hacia
+  la app activa; requiere permiso de **Accesibilidad** (`AXIsProcessTrusted`).
+- **Encriptación:** `EncryptionService` usa AES-256-CBC con clave derivada (PBKDF2) de
+  una contraseña fija y sal fija. Las columnas `IsEncrypted` y `CipherText` se agregan
+  con `ALTER TABLE` idempotente.
+- **Overlays internos:** la vista previa de imágenes y el panel de Ajustes son overlays
+  dentro de la misma ventana (no son ventanas nuevas); se controlan con
+  `IsImagePreviewOpen` / `IsSettingsOpen`.
 - **TrayIcon:** se crea en `App.SetupTrayIcon` y se guarda en un campo para que no sea
   recolectado por el GC. El ícono es un PNG de plantilla (`MacOSProperties.IsTemplateIcon`).
 - **Ventana sin marco:** `SystemDecorations=None`, `Topmost=True`, `CornerRadius=12`;

@@ -25,15 +25,20 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var mainWindow = new MainWindow();
+            var config = AppConfigService.Load();
+            var mainWindow = new MainWindow(config);
             
             var dbContext = new AppDbContext();
             var repository = new ClipboardRepository(dbContext);
             var clipboardService = new PollingClipboardMonitorService(mainWindow.Clipboard!);
+            var pasteService = new MacPasteService();
             
-            var viewModel = new MainWindowViewModel(clipboardService, repository);
+            var viewModel = new MainWindowViewModel(clipboardService, repository, pasteService, config);
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
+
+            // La ventana recarga el hook global cuando cambia el atajo desde Ajustes.
+            viewModel.HotkeyChanged += mainWindow.ReloadHotkeyConfig;
 
             SetupTrayIcon(desktop, mainWindow, viewModel);
             

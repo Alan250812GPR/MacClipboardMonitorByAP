@@ -62,6 +62,8 @@
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -83,6 +85,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/> 
                 </Grid.ColumnDefinitions>
 
@@ -98,6 +101,17 @@
                 
                 <Button Grid.Column="1" 
                         Classes="icon-button"
+                        Command="{Binding OpenSettingsCommand}"
+                        Width="34"
+                        Height="34"
+                        CornerRadius="17"
+                        Margin="0,0,6,0"
+                        ToolTip.Tip="Ajustes">
+                    <TextBlock Text="⚙️" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Button>
+
+                <Button Grid.Column="2" 
+                        Classes="icon-button"
                         Command="{Binding ClearHistoryCommand}"
                         Width="34"
                         Height="34"
@@ -107,7 +121,7 @@
                     <TextBlock Text="🗑️" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Button>
 
-                <Button Grid.Column="2" 
+                <Button Grid.Column="3" 
                         Classes="icon-button"
                         Click="OnHideClick"
                         Width="34"
@@ -118,7 +132,41 @@
                 </Button>
             </Grid>
 
-            <ListBox Grid.Row="1" 
+            <Grid Grid.Row="1" Margin="16,0,16,10">
+                <TextBox Text="{Binding SearchText}"
+                         Watermark="Buscar..."
+                         FontSize="13"
+                         CornerRadius="8" />
+                <Button Classes="icon-button"
+                        Width="24"
+                        Height="24"
+                        CornerRadius="12"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Margin="0,0,6,0"
+                        IsVisible="{Binding HasSearchText}"
+                        Command="{Binding ClearSearchCommand}"
+                        ToolTip.Tip="Limpiar búsqueda">
+                    <TextBlock Text="✕" FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Button>
+            </Grid>
+
+            <Border Grid.Row="2"
+                    Margin="16,0,16,8"
+                    Padding="10,6"
+                    CornerRadius="6"
+                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                    IsVisible="{Binding ShowPasteWarning}">
+                <TextBlock FontSize="11"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Text="⚠ Para pegar directo (doble clic), activa esta app en Ajustes → Privacidad → Accesibilidad." />
+            </Border>
+
+            <ListBox Grid.Row="3" 
+                     x:Name="HistoryList"
                      ItemsSource="{Binding History}" 
                      SelectedItem="{Binding SelectedItem}"
                      Background="Transparent" 
@@ -134,7 +182,9 @@
                                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
                                 BorderThickness="1"
-                                Cursor="Hand">
+                                Cursor="Hand"
+                                DoubleTapped="OnCardDoubleTapped"
+                                ToolTip.Tip="Clic: copiar · Doble clic: pegar directo en la app activa">
                             <Border.Transitions>
                                 <Transitions>
                                     <BrushTransition Property="Background" Duration="0:0:0.15"/>
@@ -158,12 +208,28 @@
                                     </Border>
 
                                     <TextBlock Text="{Binding Content}" 
-                                               IsVisible="{Binding IsText}"
+                                               IsVisible="{Binding IsPlainText}"
                                                TextWrapping="Wrap" 
                                                TextTrimming="CharacterEllipsis"
                                                MaxHeight="60" 
                                                FontSize="14"
                                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+
+                                    <TextBlock Text="{Binding Content}"
+                                               IsVisible="{Binding HasCodeBadge}"
+                                               TextWrapping="Wrap"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxHeight="60"
+                                               FontSize="12.5"
+                                               FontFamily="Menlo,Consolas,monospace"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+
+                                    <TextBlock Text="••••••••"
+                                               IsVisible="{Binding IsSecret}"
+                                               FontSize="14"
+                                               FontWeight="Bold"
+                                               MaxHeight="60"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
 
                                     <StackPanel IsVisible="{Binding IsFile}" Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="📄" FontSize="16" VerticalAlignment="Top" />
@@ -176,6 +242,12 @@
                                     </StackPanel>
 
                                     <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border IsVisible="{Binding HasCodeBadge}" CornerRadius="4" Padding="6,1" Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
+                                            <TextBlock Text="{Binding CodeLanguage}" FontSize="10" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
+                                        </Border>
+                                        <Border IsVisible="{Binding IsSecret}" CornerRadius="4" Padding="6,1" Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
+                                            <TextBlock Text="🔒 Encriptado" FontSize="10" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
+                                        </Border>
                                         <Border IsVisible="{Binding IsImage}" CornerRadius="4" Padding="6,1" Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
                                             <TextBlock Text="Imagen" FontSize="10" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
                                         </Border>
@@ -189,22 +261,169 @@
                                     </StackPanel>
                                 </StackPanel>
 
-                                <Button Grid.Column="1"
-                                        VerticalAlignment="Top"
-                                        Classes="icon-button"
-                                        Width="26"
-                                        Height="26"
-                                        CornerRadius="13"
-                                        ToolTip.Tip="Borrar este elemento"
-                                        Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).DeleteItemCommand}"
-                                        CommandParameter="{Binding}">
-                                    <TextBlock Text="✕" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Button>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Top" Spacing="4">
+                                    <Button Classes="icon-button"
+                                            Width="26"
+                                            Height="26"
+                                            CornerRadius="13"
+                                            IsVisible="{Binding IsImage}"
+                                            Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).OpenImagePreviewCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip.Tip="Ver imagen ampliada">
+                                        <TextBlock Text="🔍" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Button>
+                                    <Button Classes="icon-button"
+                                            Width="26"
+                                            Height="26"
+                                            CornerRadius="13"
+                                            IsVisible="{Binding CanEncrypt}"
+                                            Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).EncryptItemCommand}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip.Tip="Encriptar este texto (quedará guardado cifrado hasta que lo borres)">
+                                        <TextBlock Text="🔒" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Button>
+                                    <Button VerticalAlignment="Top"
+                                            Classes="icon-button"
+                                            Width="26"
+                                            Height="26"
+                                            CornerRadius="13"
+                                            ToolTip.Tip="Borrar este elemento"
+                                            Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).DeleteItemCommand}"
+                                            CommandParameter="{Binding}">
+                                        <TextBlock Text="✕" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Button>
+                                </StackPanel>
                             </Grid>
                         </Border>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!-- Vista previa ampliada de imágenes -->
+            <Border Grid.Row="0"
+                    Grid.RowSpan="4"
+                    CornerRadius="12"
+                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                    IsVisible="{Binding IsImagePreviewOpen}">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="Vista previa"
+                                   FontSize="16"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                        <Button Classes="icon-button"
+                                Width="30"
+                                Height="30"
+                                CornerRadius="15"
+                                HorizontalAlignment="Right"
+                                Command="{Binding CloseImagePreviewCommand}"
+                                ToolTip.Tip="Cerrar vista previa">
+                            <TextBlock Text="✕" FontSize="13" FontWeight="Bold"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Auto">
+                        <LayoutTransformControl>
+                            <LayoutTransformControl.LayoutTransform>
+                                <ScaleTransform ScaleX="{Binding PreviewZoom}" ScaleY="{Binding PreviewZoom}"/>
+                            </LayoutTransformControl.LayoutTransform>
+                            <Image Source="{Binding PreviewImageSource}" Stretch="Uniform" />
+                        </LayoutTransformControl>
+                    </ScrollViewer>
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,10,0,0"
+                               FontSize="11"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Text="Ctrl + rueda para hacer zoom · Esc para cerrar" />
+                </Grid>
+            </Border>
+
+            <!-- Ajustes (atajo global configurable) -->
+            <Border Grid.Row="0"
+                    Grid.RowSpan="4"
+                    CornerRadius="12"
+                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                    IsVisible="{Binding IsSettingsOpen}">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,14">
+                        <TextBlock Text="Ajustes"
+                                   FontSize="16"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                        <Button Classes="icon-button"
+                                Width="30"
+                                Height="30"
+                                CornerRadius="15"
+                                HorizontalAlignment="Right"
+                                Command="{Binding CloseSettingsCommand}"
+                                ToolTip.Tip="Cerrar ajustes">
+                            <TextBlock Text="✕" FontSize="13" FontWeight="Bold"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                    </Grid>
+
+                    <TextBlock Grid.Row="1"
+                               Text="Atajo global (mostrar / ocultar)"
+                               FontSize="12"
+                               Margin="0,0,0,6"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+
+                    <Border Grid.Row="2"
+                            Padding="10,8"
+                            CornerRadius="8"
+                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                            BorderThickness="1"
+                            Margin="0,0,0,10">
+                        <TextBlock Text="{Binding HotkeyDisplay}"
+                                   FontSize="15"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                    </Border>
+
+                    <StackPanel Grid.Row="3" Spacing="8">
+                        <Button Command="{Binding StartRecordingCommand}"
+                                IsEnabled="{Binding !IsRecordingHotkey}"
+                                Content="{Binding RecordButtonText}"
+                                HorizontalAlignment="Stretch"
+                                CornerRadius="8"
+                                Padding="10,8" />
+                        <Button Command="{Binding RestoreDefaultHotkeyCommand}"
+                                Content="Restaurar Ctrl + Cmd + V"
+                                HorizontalAlignment="Stretch"
+                                CornerRadius="8"
+                                Padding="10,8" />
+                        <TextBlock FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Text="Usa una letra o tecla F1-F12 con al menos Ctrl o Cmd. Esc cancela la grabación." />
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
     </Border>
 </Window>

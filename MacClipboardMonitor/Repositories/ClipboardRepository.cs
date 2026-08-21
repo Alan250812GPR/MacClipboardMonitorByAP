@@ -17,7 +17,7 @@ public class ClipboardRepository : IClipboardRepository
         _dbContext = dbContext;
     }
 
-    public async Task<List<ClipboardItem>> GetRecentItemsAsync(int limit = 50)
+    public async Task<List<ClipboardItem>> GetRecentItemsAsync(int limit = IClipboardRepository.MaxItems)
     {
         await PurgeExpiredAsync();
 
@@ -67,18 +67,31 @@ public class ClipboardRepository : IClipboardRepository
         _dbContext.ClipboardItems.Add(item);
         await _dbContext.SaveChangesAsync();
 
-        // 4. Límite de seguridad global
+        // 4. Límite de seguridad global (sin tocar las entradas encriptadas)
         var count = await _dbContext.ClipboardItems.CountAsync();
-        if (count > 50)
+        if (count > IClipboardRepository.MaxItems)
         {
             var oldItems = await _dbContext.ClipboardItems
+                .Where(x => !x.IsEncrypted)
                 .OrderBy(x => x.CreatedAt)
-                .Take(count - 50)
+                .Take(count - IClipboardRepository.MaxItems)
                 .ToListAsync();
                 
             _dbContext.ClipboardItems.RemoveRange(oldItems);
             await _dbContext.SaveChangesAsync();
         }
+    }
+
+    // Marca una entrada de texto como encriptada y la persiste.
+    public async Task MarkEncryptedAsync(ClipboardItem item)
+    {
+        var tracked = await _dbContext.ClipboardItems.FindAsync(item.Id);
+        if (tracked is null) return;
+
+        tracked.IsEncrypted = true;
+        tracked.CipherText = item.CipherText;
+        tracked.Content = string.Empty;
+        await _dbContext.SaveChangesAsync();
     }
 
     public async Task DeleteItemAsync(int id)
@@ -103,8 +116,9 @@ public class ClipboardRepository : IClipboardRepository
         var fileCutoff = now.AddHours(-1);
 
         await _dbContext.ClipboardItems
-            .Where(x => (x.Type == ClipboardItemType.Texto && x.CreatedAt < textCutoff) ||
-                        (x.Type != ClipboardItemType.Texto && x.CreatedAt < fileCutoff))
+            .Where(x => !x.IsEncrypted &&
+                        ((x.Type == ClipboardItemType.Texto && x.CreatedAt < textCutoff) ||
+                         (x.Type != ClipboardItemType.Texto && x.CreatedAt < fileCutoff)))
             .ExecuteDeleteAsync();
     }
 }

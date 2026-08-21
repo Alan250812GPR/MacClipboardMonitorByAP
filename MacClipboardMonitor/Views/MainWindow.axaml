@@ -19,44 +19,102 @@
         Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
         CornerRadius="12">
 
+    <Window.Styles>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="ListBoxItem /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+
+        <Style Selector="Button.icon-button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.icon-button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+        <Style Selector="Button.icon-button:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+
+        <Style Selector="ListBoxItem:pointerover Border.item-card">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlHighlightListAccentMediumBrush}"/>
+            <Setter Property="BoxShadow" Value="0 4 14 0 #1F000000"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected Border.item-card">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightListAccentLowBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+        </Style>
+    </Window.Styles>
+
     <Border BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1" CornerRadius="12">
-        <Grid Margin="16">
+        <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <Grid Grid.Row="0" Margin="0,0,0,16" Background="Transparent" PointerPressed="OnPointerPressed">
+            <Border Grid.RowSpan="2"
+                    Height="3"
+                    VerticalAlignment="Top"
+                    CornerRadius="11,11,0,0"
+                    IsHitTestVisible="False">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                        <GradientStop Offset="0" Color="#6C63FF"/>
+                        <GradientStop Offset="0.5" Color="#7C6CFF"/>
+                        <GradientStop Offset="1" Color="#4CC9F0"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+
+            <Grid Grid.Row="0" Margin="16,18,16,14" Background="Transparent" PointerPressed="OnPointerPressed">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/> 
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" 
-                           Text="Portapapeles" 
-                           FontSize="20" 
-                           FontWeight="Bold" 
-                           VerticalAlignment="Center" 
-                           IsHitTestVisible="False" /> 
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2" IsHitTestVisible="False">
+                    <TextBlock Text="Portapapeles"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                    <TextBlock Text="Historial de copiado"
+                               FontSize="12"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                </StackPanel>
                 
                 <Button Grid.Column="1" 
+                        Classes="icon-button"
                         Command="{Binding ClearHistoryCommand}"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Cursor="Hand"
-                        Margin="0,0,8,0"
+                        Width="34"
+                        Height="34"
+                        CornerRadius="17"
+                        Margin="0,0,6,0"
                         ToolTip.Tip="Borrar todo el historial">
-                    <TextBlock Text="🗑️" FontSize="18" />
+                    <TextBlock Text="🗑️" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Button>
 
                 <Button Grid.Column="2" 
+                        Classes="icon-button"
                         Click="OnHideClick"
-                        Background="Transparent"
-                        BorderThickness="0"
-                        Cursor="Hand"
+                        Width="34"
+                        Height="34"
+                        CornerRadius="17"
                         ToolTip.Tip="Ocultar panel">
-                    <TextBlock Text="❌" FontSize="18" />
+                    <TextBlock Text="✕" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Button>
             </Grid>
 
@@ -65,45 +123,52 @@
                      SelectedItem="{Binding SelectedItem}"
                      Background="Transparent" 
                      BorderThickness="0"
+                     Padding="0,0,0,10"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                <ListBox.Styles>
-                    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                        <Setter Property="Background" Value="Transparent"/>
-                    </Style>
-                </ListBox.Styles>
-                
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="models:ClipboardItem">
-                        <Border CornerRadius="8" 
-                                Padding="12"
+                        <Border Classes="item-card"
+                                CornerRadius="10" 
+                                Padding="14,12"
                                 Margin="0,0,0,8"
                                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
                                 BorderThickness="1"
                                 Cursor="Hand">
+                            <Border.Transitions>
+                                <Transitions>
+                                    <BrushTransition Property="Background" Duration="0:0:0.15"/>
+                                    <BrushTransition Property="BorderBrush" Duration="0:0:0.15"/>
+                                </Transitions>
+                            </Border.Transitions>
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <TextBlock Grid.Column="0" 
-                                           Text="{Binding Content}" 
-                                           TextWrapping="Wrap" 
-                                           TextTrimming="CharacterEllipsis"
-                                           MaxHeight="60" 
-                                           Margin="0,0,8,0" />
+                                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,12,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Content}" 
+                                               TextWrapping="Wrap" 
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxHeight="60" 
+                                               FontSize="14"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                                    <TextBlock Text="{Binding CreatedAt, StringFormat={}{0:dd/MM HH:mm}}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                </StackPanel>
 
                                 <Button Grid.Column="1"
                                         VerticalAlignment="Top"
-                                        Background="Transparent"
-                                        BorderThickness="0"
-                                        Padding="4"
-                                        Cursor="Hand"
+                                        Classes="icon-button"
+                                        Width="26"
+                                        Height="26"
+                                        CornerRadius="13"
                                         ToolTip.Tip="Borrar este elemento"
                                         Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).DeleteItemCommand}"
                                         CommandParameter="{Binding}">
-                                    <TextBlock Text="✕" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="14" FontWeight="Bold" />
+                                    <TextBlock Text="✕" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Button>
                             </Grid>
                         </Border>

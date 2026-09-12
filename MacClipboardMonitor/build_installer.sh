@@ -3,6 +3,12 @@
 APP_NAME="MacClipboardMonitor"
 PUBLISH_DIR="./bin/Release/net8.0/osx-arm64/publish"
 APP_BUNDLE_DIR="./InstallerBuild/${APP_NAME}.app"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "🔢 Incrementando versión patch (M.M.P)..."
+bash "$SCRIPT_DIR/increment_version.sh"
+APP_VERSION=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' "$SCRIPT_DIR/MacClipboardMonitor.csproj" | head -n1 | tr -d '[:space:]')
+echo "📌 Versión actual: $APP_VERSION"
 
 echo "🧹 Limpiando compilaciones anteriores..."
 rm -rf ./InstallerBuild
@@ -19,7 +25,7 @@ chmod +x "$APP_BUNDLE_DIR/Contents/MacOS/$APP_NAME"
 # Si tienes un ícono, descomenta la siguiente línea y asegúrate de tener icon.icns en la raíz
 # cp ./icon.icns "$APP_BUNDLE_DIR/Contents/Resources/"
 
-echo "📝 Generando Info.plist..."
+echo "📝 Generando Info.plist (versión $APP_VERSION)..."
 cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -34,7 +40,9 @@ cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<EOF
     <key>CFBundleIconFile</key>
     <string>icon.icns</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$APP_VERSION</string>
+    <key>CFBundleVersion</key>
+    <string>$APP_VERSION</string>
     <key>LSUIElement</key>
     <true/> </dict>
 </plist>

@@ -29,33 +29,48 @@ public class ClipboardRepository : IClipboardRepository
 
     public async Task AddItemAsync(ClipboardItem item)
     {
-        // 1. Anti-duplicados según el tipo de contenido
+        // 1. Anti-duplicados según el tipo: si existe, mover al tope (Touch) para preservar LIFO en DB
         switch (item.Type)
         {
             case ClipboardItemType.Texto:
-                bool textExists = await _dbContext.ClipboardItems
-                    .AnyAsync(x => x.Type == ClipboardItemType.Texto &&
+                var existingText = await _dbContext.ClipboardItems
+                    .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Texto &&
                                    x.Content.ToLower() == item.Content.ToLower());
-                if (textExists) return;
+                if (existingText != null)
+                {
+                    existingText.CreatedAt = DateTime.Now;
+                    await _dbContext.SaveChangesAsync();
+                    return;
+                }
                 break;
 
             case ClipboardItemType.Imagen:
                 if (!string.IsNullOrEmpty(item.ImageHash))
                 {
-                    bool imageExists = await _dbContext.ClipboardItems
-                        .AnyAsync(x => x.Type == ClipboardItemType.Imagen &&
+                    var existingImage = await _dbContext.ClipboardItems
+                        .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Imagen &&
                                        x.ImageHash == item.ImageHash);
-                    if (imageExists) return;
+                    if (existingImage != null)
+                    {
+                        existingImage.CreatedAt = DateTime.Now;
+                        await _dbContext.SaveChangesAsync();
+                        return;
+                    }
                 }
                 break;
 
             case ClipboardItemType.Archivo:
                 if (!string.IsNullOrEmpty(item.FilePaths))
                 {
-                    bool fileExists = await _dbContext.ClipboardItems
-                        .AnyAsync(x => x.Type == ClipboardItemType.Archivo &&
+                    var existingFile = await _dbContext.ClipboardItems
+                        .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Archivo &&
                                        x.FilePaths == item.FilePaths);
-                    if (fileExists) return;
+                    if (existingFile != null)
+                    {
+                        existingFile.CreatedAt = DateTime.Now;
+                        await _dbContext.SaveChangesAsync();
+                        return;
+                    }
                 }
                 break;
         }
@@ -80,6 +95,15 @@ public class ClipboardRepository : IClipboardRepository
             _dbContext.ClipboardItems.RemoveRange(oldItems);
             await _dbContext.SaveChangesAsync();
         }
+    }
+
+    // Actualiza CreatedAt al momento actual para mover el item al tope (LIFO).
+    public async Task TouchAsync(int id)
+    {
+        var tracked = await _dbContext.ClipboardItems.FindAsync(id);
+        if (tracked is null) return;
+        tracked.CreatedAt = DateTime.Now;
+        await _dbContext.SaveChangesAsync();
     }
 
     // Marca una entrada de texto como encriptada y la persiste.

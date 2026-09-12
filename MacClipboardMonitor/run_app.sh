@@ -9,6 +9,11 @@ APP_NAME="MacClipboardMonitor"
 PUBLISH_DIR="./bin/Release/net8.0/osx-arm64/publish"
 APP_BUNDLE_DIR="./InstallerBuild/${APP_NAME}.app"
 
+echo "🔢 Incrementando versión patch (M.M.P)..."
+bash "$SCRIPT_DIR/increment_version.sh"
+APP_VERSION=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' "$SCRIPT_DIR/MacClipboardMonitor.csproj" | head -n1 | tr -d '[:space:]')
+echo "📌 Versión actual: $APP_VERSION"
+
 echo "🔨 Publicando para macOS (arm64)..."
 dotnet publish -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true
 
@@ -32,7 +37,9 @@ cat > "$APP_BUNDLE_DIR/Contents/Info.plist" <<EOF
     <key>CFBundleName</key>
     <string>$APP_NAME</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$APP_VERSION</string>
+    <key>CFBundleVersion</key>
+    <string>$APP_VERSION</string>
     <key>LSUIElement</key>
     <true/>
 </dict>

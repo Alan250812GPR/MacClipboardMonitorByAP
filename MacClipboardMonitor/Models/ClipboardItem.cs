@@ -22,7 +22,17 @@ public class ClipboardItem : INotifyPropertyChanged
 
     // Guardamos los bytes en SQLite
     public byte[]? ImageBytes { get; set; }
-    public DateTime CreatedAt { get; set; }
+    private DateTime _createdAt;
+    public DateTime CreatedAt
+    {
+        get => _createdAt;
+        set
+        {
+            if (_createdAt == value) return;
+            _createdAt = value;
+            OnPropertyChanged(nameof(CreatedAt));
+        }
+    }
 
     // Tipo de contenido (texto, imagen o archivo). Por defecto texto.
     public ClipboardItemType Type { get; set; } = ClipboardItemType.Texto;

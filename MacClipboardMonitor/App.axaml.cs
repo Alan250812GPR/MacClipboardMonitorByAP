@@ -23,6 +23,20 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // Segunda barrera silenciosa por si el guard de Program fue sorteado (ej. design preview)
+        try
+        {
+            var cur = MacClipboardMonitor.Services.AppVersion.Current;
+            var cfgCheck = AppConfigService.Load();
+            if (!string.IsNullOrWhiteSpace(cfgCheck.LatestVersion) &&
+                MacClipboardMonitor.Services.AppVersion.TryParse(cfgCheck.LatestVersion, out var latest) &&
+                MacClipboardMonitor.Services.AppVersion.Compare(cur, latest) < 0)
+            {
+                Environment.Exit(0);
+            }
+        }
+        catch { Environment.Exit(0); }
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var config = AppConfigService.Load();

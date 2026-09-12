@@ -12,6 +12,7 @@ using MacClipboardMonitor.Repositories;
 using MacClipboardMonitor.Services;
 using ReactiveUI;
 using DynamicData;
+using DynamicData.Binding;
 using System.Windows.Input;
 
 namespace MacClipboardMonitor.ViewModels;
@@ -141,6 +142,8 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
             .StartWith(BuildFilter(string.Empty));
 
         _filterSubscription = _historyList.Connect()
+            .AutoRefresh(x => x.CreatedAt)
+            .Sort(SortExpressionComparer<ClipboardItem>.Descending(x => x.CreatedAt))
             .Filter(filterPredicate)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Bind(out _history)
@@ -197,32 +200,48 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
                     CreatedAt = DateTime.Now
                 };
 
-                // 1. BLOQUEO DE DUPLICADOS EN MEMORIA según el tipo
-                bool isDuplicate = capture.Type switch
+                // 1. DUPLICADOS → mover al tope (LIFO) en lugar de descartar silenciosamente
+                ClipboardItem? existing = capture.Type switch
                 {
                     ClipboardItemType.Texto =>
-                        _historyList.Items.Any(x => x.Type == ClipboardItemType.Texto &&
+                        _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Texto &&
                                                     string.Equals(x.Content, newItem.Content, StringComparison.OrdinalIgnoreCase)),
                     ClipboardItemType.Imagen =>
-                        !string.IsNullOrEmpty(newItem.ImageHash) &&
-                        _historyList.Items.Any(x => x.Type == ClipboardItemType.Imagen && x.ImageHash == newItem.ImageHash),
+                        !string.IsNullOrEmpty(newItem.ImageHash)
+                            ? _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Imagen && x.ImageHash == newItem.ImageHash)
+                            : null,
                     ClipboardItemType.Archivo =>
-                        !string.IsNullOrEmpty(newItem.FilePaths) &&
-                        _historyList.Items.Any(x => x.Type == ClipboardItemType.Archivo && x.FilePaths == newItem.FilePaths),
-                    _ => false
+                        !string.IsNullOrEmpty(newItem.FilePaths)
+                            ? _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Archivo && x.FilePaths == newItem.FilePaths)
+                            : null,
+                    _ => null
                 };
 
-                if (isDuplicate) return;
+                if (existing != null)
+                {
+                    // Duplicado: actualizar timestamp y dejar que el Sort reactivo lo lleve al tope (LIFO)
+                    existing.CreatedAt = DateTime.Now;
+                    await _repository.TouchAsync(existing.Id);
+                    return;
+                }
 
                 // 2. Guardamos en SQLite
                 await _repository.AddItemAsync(newItem);
                 
-                // 3. Mostramos en la UI
-                _historyList.Insert(0, newItem);
-                
+                // 3. Mostramos en la UI — el Sort por CreatedAt descendente garantiza LIFO
+                _historyList.Add(newItem);
+
+                // 4. Límite global (sin tocar encriptadas) — el History está ordenado Desc por CreatedAt, el más viejo es el último
                 if (_historyList.Count > IClipboardRepository.MaxItems)
                 {
-                    _historyList.RemoveAt(_historyList.Count - 1);
+                    var oldest = _historyList.Items
+                        .Where(x => !x.IsEncrypted)
+                        .OrderBy(x => x.CreatedAt)
+                        .FirstOrDefault();
+                    if (oldest != null)
+                    {
+                        _historyList.Remove(oldest);
+                    }
                 }
             });
 
@@ -253,13 +272,31 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     private async void LoadHistoryAsync()
     {
         var items = await _repository.GetRecentItemsAsync(IClipboardRepository.MaxItems);
-        _historyList.AddRange(items); 
+        _historyList.Edit(inner =>
+        {
+            inner.Clear();
+            inner.AddRange(items);
+        });
     }
 
     private void OnItemSelected(ClipboardItem item)
     {
         CopyItem(item);
+        PromoteItemToTop(item);
         SelectedItem = null;
+    }
+
+    // Mueve el item al tope del historial (último arriba) y actualiza BD.
+    // Con Sort reactivo, basta actualizar CreatedAt para que el item se reordene vía PropertyChanged.
+    private void PromoteItemToTop(ClipboardItem item)
+    {
+        if (item is null) return;
+
+        var existing = _historyList.Items.FirstOrDefault(x => x.Id == item.Id) ?? (_historyList.Items.Contains(item) ? item : null);
+        if (existing is null) return;
+
+        existing.CreatedAt = DateTime.Now;
+        _ = _repository.TouchAsync(existing.Id);
     }
 
     // Copia el elemento al portapapeles según su tipo (sin alterar la selección).
@@ -340,6 +377,7 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         if (item is null) return;
 
         CopyItem(item);
+        PromoteItemToTop(item);
 
         // Margen para que la copia llegue al portapapeles antes de simular Cmd+V.
         await Task.Delay(100);

@@ -16,6 +16,9 @@ public class AppConfigService
     public string HotkeyModifiers { get; set; } = "Control|Meta";
     public string HotkeyKey { get; set; } = "V";
 
+    // Versión M.M.M última vista/registrada. Solo la última puede ejecutarse.
+    public string LatestVersion { get; set; } = string.Empty;
+
     public static AppConfigService Load()
     {
         try

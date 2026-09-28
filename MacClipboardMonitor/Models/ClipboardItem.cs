@@ -62,11 +62,29 @@ public class ClipboardItem : INotifyPropertyChanged
             OnPropertyChanged(nameof(IsPlainText));
             OnPropertyChanged(nameof(HasCodeBadge));
             OnPropertyChanged(nameof(CanEncrypt));
+            OnPropertyChanged(nameof(IsFullPreviewAllowed));
+            OnPropertyChanged(nameof(EncryptedDisplay));
+            OnPropertyChanged(nameof(HasEncryptedTag));
         }
     }
 
     // Payload cifrado en Base64.
     public string? CipherText { get; set; }
+
+    // Título/tag personalizado para entradas encriptadas (identificación rápida).
+    private string? _encryptedTag;
+    public string? EncryptedTag
+    {
+        get => _encryptedTag;
+        set
+        {
+            if (_encryptedTag == value) return;
+            _encryptedTag = value;
+            OnPropertyChanged(nameof(EncryptedTag));
+            OnPropertyChanged(nameof(EncryptedDisplay));
+            OnPropertyChanged(nameof(HasEncryptedTag));
+        }
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -105,9 +123,20 @@ public class ClipboardItem : INotifyPropertyChanged
     [NotMapped]
     public bool HasCodeBadge => !string.IsNullOrEmpty(CodeLanguage);
 
-    // Entrada encriptada: la UI muestra solo una máscara.
+    // Entrada encriptada: la UI muestra solo una máscara o el tag.
     [NotMapped]
     public bool IsSecret => IsEncrypted;
+
+    [NotMapped]
+    public string EncryptedDisplay =>
+        !string.IsNullOrWhiteSpace(EncryptedTag) ? EncryptedTag! : "••••••••";
+
+    [NotMapped]
+    public bool HasEncryptedTag => IsEncrypted && !string.IsNullOrWhiteSpace(EncryptedTag);
+
+    // Las encriptadas están exentas de la previsualización completa.
+    [NotMapped]
+    public bool IsFullPreviewAllowed => !IsEncrypted;
 
     // Texto plano sin detección de código y sin encriptar.
     [NotMapped]

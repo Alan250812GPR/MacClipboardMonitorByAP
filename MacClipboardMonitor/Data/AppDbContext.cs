@@ -29,5 +29,6 @@ public class AppDbContext : DbContext
         try { Database.ExecuteSqlRaw("ALTER TABLE ClipboardItems ADD COLUMN ImageHash TEXT NULL"); } catch { /* ya existe */ }
         try { Database.ExecuteSqlRaw("ALTER TABLE ClipboardItems ADD COLUMN IsEncrypted INTEGER NOT NULL DEFAULT 0"); } catch { /* ya existe */ }
         try { Database.ExecuteSqlRaw("ALTER TABLE ClipboardItems ADD COLUMN CipherText TEXT NULL"); } catch { /* ya existe */ }
+        try { Database.ExecuteSqlRaw("ALTER TABLE ClipboardItems ADD COLUMN EncryptedTag TEXT NULL"); } catch { /* ya existe */ }
     }
 }

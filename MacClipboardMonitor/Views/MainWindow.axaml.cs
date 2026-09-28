@@ -90,6 +90,23 @@ public partial class MainWindow : Window
         Hide();
     }
 
+    // Clic derecho en una tarjeta: vista previa completa (exenta para encriptadas).
+    private void OnCardPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(sender as Control);
+        if (!point.Properties.IsRightButtonPressed) return;
+        if (sender is not Border { DataContext: MacClipboardMonitor.Models.ClipboardItem item }) return;
+        if (DataContext is not MainWindowViewModel vm) return;
+        if (item.IsEncrypted) return; // exenta
+
+        // Ejecutar comando de preview completa
+        if (vm.OpenFullPreviewCommand.CanExecute(item))
+        {
+            vm.OpenFullPreviewCommand.Execute(item);
+        }
+        e.Handled = true;
+    }
+
     // Doble clic en una tarjeta: oculta la ventana y pega directo en la app activa.
     private async void OnCardDoubleTapped(object? sender, TappedEventArgs e)
     {
@@ -188,7 +205,15 @@ public partial class MainWindow : Window
                 break;
 
             case Key.Escape:
-                if (vm.IsImagePreviewOpen)
+                if (vm.IsTagDialogOpen)
+                {
+                    vm.CancelTagDialogCommand.Execute(null);
+                }
+                else if (vm.IsFullPreviewOpen)
+                {
+                    vm.CloseFullPreviewCommand.Execute(null);
+                }
+                else if (vm.IsImagePreviewOpen)
                 {
                     vm.CloseImagePreview();
                 }
@@ -205,10 +230,12 @@ public partial class MainWindow : Window
         }
     }
 
-    // Ctrl + rueda ajusta el zoom de la vista previa de imágenes.
+    // Ctrl + rueda ajusta el zoom de la vista previa de imágenes (ambos overlays).
     private void OnPreviewWheelTunnel(object? sender, PointerWheelEventArgs e)
     {
-        if (DataContext is not MainWindowViewModel vm || !vm.IsImagePreviewOpen) return;
+        if (DataContext is not MainWindowViewModel vm) return;
+        bool canZoom = vm.IsImagePreviewOpen || (vm.IsFullPreviewOpen && vm.FullPreviewItem?.IsImage == true);
+        if (!canZoom) return;
         if ((e.KeyModifiers & KeyModifiers.Control) == 0) return;
 
         vm.ZoomPreview(e.Delta.Y);

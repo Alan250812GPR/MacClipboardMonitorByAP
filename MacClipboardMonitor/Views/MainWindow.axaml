@@ -176,15 +176,16 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="models:ClipboardItem">
                         <Border Classes="item-card"
-                                CornerRadius="10" 
-                                Padding="14,12"
-                                Margin="0,0,0,8"
-                                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                                BorderThickness="1"
-                                Cursor="Hand"
-                                DoubleTapped="OnCardDoubleTapped"
-                                ToolTip.Tip="Clic: copiar · Doble clic: pegar directo en la app activa">
+                                 CornerRadius="10" 
+                                 Padding="14,12"
+                                 Margin="0,0,0,8"
+                                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                                 BorderThickness="1"
+                                 Cursor="Hand"
+                                 PointerPressed="OnCardPointerPressed"
+                                 DoubleTapped="OnCardDoubleTapped"
+                                 ToolTip.Tip="Clic: copiar · Doble clic: pegar directo · Clic derecho: vista previa completa">
                             <Border.Transitions>
                                 <Transitions>
                                     <BrushTransition Property="Background" Duration="0:0:0.15"/>
@@ -224,12 +225,14 @@
                                                FontFamily="Menlo,Consolas,monospace"
                                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
 
-                                    <TextBlock Text="••••••••"
-                                               IsVisible="{Binding IsSecret}"
-                                               FontSize="14"
-                                               FontWeight="Bold"
-                                               MaxHeight="60"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                    <TextBlock Text="{Binding EncryptedDisplay}"
+                                                IsVisible="{Binding IsSecret}"
+                                                TextWrapping="Wrap"
+                                                TextTrimming="CharacterEllipsis"
+                                                MaxHeight="60"
+                                                FontSize="14"
+                                                FontWeight="Bold"
+                                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
 
                                     <StackPanel IsVisible="{Binding IsFile}" Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="📄" FontSize="16" VerticalAlignment="Top" />
@@ -273,15 +276,25 @@
                                         <TextBlock Text="🔍" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Button>
                                     <Button Classes="icon-button"
-                                            Width="26"
-                                            Height="26"
-                                            CornerRadius="13"
-                                            IsVisible="{Binding CanEncrypt}"
-                                            Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).EncryptItemCommand}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip.Tip="Encriptar este texto (quedará guardado cifrado hasta que lo borres)">
-                                        <TextBlock Text="🔒" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Button>
+                                             Width="26"
+                                             Height="26"
+                                             CornerRadius="13"
+                                             IsVisible="{Binding CanEncrypt}"
+                                             Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).RequestEncryptCommand}"
+                                             CommandParameter="{Binding}"
+                                             ToolTip.Tip="Encriptar este texto (te pedirá un título/tag y quedará guardado cifrado hasta que lo borres)">
+                                         <TextBlock Text="🔒" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                     </Button>
+                                     <Button Classes="icon-button"
+                                             Width="26"
+                                             Height="26"
+                                             CornerRadius="13"
+                                             IsVisible="{Binding IsSecret}"
+                                             Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).EditTagCommand}"
+                                             CommandParameter="{Binding}"
+                                             ToolTip.Tip="Editar título/tag de esta entrada encriptada">
+                                         <TextBlock Text="✎" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                     </Button>
                                     <Button VerticalAlignment="Top"
                                             Classes="icon-button"
                                             Width="26"
@@ -299,12 +312,140 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
+            <!-- Vista previa completa (clic derecho) — solo lectura, exenta para encriptadas -->
+            <Border Grid.Row="0"
+                     Grid.RowSpan="4"
+                     CornerRadius="12"
+                     Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                     IsVisible="{Binding IsFullPreviewOpen}">
+                <Grid Margin="16">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="Vista previa completa"
+                                   FontSize="16"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                        <Button Classes="icon-button"
+                                Width="30"
+                                Height="30"
+                                CornerRadius="15"
+                                HorizontalAlignment="Right"
+                                Command="{Binding CloseFullPreviewCommand}"
+                                ToolTip.Tip="Cerrar vista previa">
+                            <TextBlock Text="✕" FontSize="13" FontWeight="Bold"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="10">
+                            <!-- Imagen completa con zoom -->
+                            <Border IsVisible="{Binding FullPreviewItem.IsImage}"
+                                    CornerRadius="8"
+                                    ClipToBounds="True"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}">
+                                <LayoutTransformControl>
+                                    <LayoutTransformControl.LayoutTransform>
+                                        <ScaleTransform ScaleX="{Binding PreviewZoom}" ScaleY="{Binding PreviewZoom}"/>
+                                    </LayoutTransformControl.LayoutTransform>
+                                    <Image Source="{Binding FullPreviewImageSource}" Stretch="Uniform" MaxHeight="320" />
+                                </LayoutTransformControl>
+                            </Border>
+                            <!-- Texto completo solo lectura -->
+                            <SelectableTextBlock IsVisible="{Binding FullPreviewItem.IsText}"
+                                                 Text="{Binding FullPreviewText}"
+                                                 TextWrapping="Wrap"
+                                                 FontSize="13"
+                                                 Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                            <TextBlock IsVisible="{Binding FullPreviewItem.HasCodeBadge}"
+                                       Text="{Binding FullPreviewItem.CodeLanguage, StringFormat='Lenguaje: {0}'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
+                            <!-- Archivo -->
+                            <StackPanel IsVisible="{Binding FullPreviewItem.IsFile}" Spacing="4">
+                                <TextBlock Text="Archivos:" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                                <SelectableTextBlock Text="{Binding FullPreviewText}"
+                                                     TextWrapping="Wrap"
+                                                     FontSize="13"
+                                                     Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border IsVisible="{Binding FullPreviewItem.IsImage}" CornerRadius="4" Padding="6,1" Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
+                                    <TextBlock Text="Imagen" FontSize="10" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
+                                </Border>
+                                <Border IsVisible="{Binding FullPreviewItem.IsFile}" CornerRadius="4" Padding="6,1" Background="{DynamicResource SystemControlHighlightListAccentLowBrush}">
+                                    <TextBlock Text="Archivo" FontSize="10" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" />
+                                </Border>
+                                <TextBlock Text="{Binding FullPreviewItem.CreatedAt, StringFormat={}{0:dd/MM/yyyy HH:mm:ss}}"
+                                           FontSize="11"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <TextBlock Grid.Row="2"
+                               Margin="0,10,0,0"
+                               FontSize="11"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Text="Esc para cerrar · Ctrl + rueda para zoom en imágenes" />
+                </Grid>
+            </Border>
+
+            <!-- Diálogo tag/título para encriptadas -->
+            <Border Grid.Row="0"
+                     Grid.RowSpan="4"
+                     CornerRadius="12"
+                     Background="#80000000"
+                     IsVisible="{Binding IsTagDialogOpen}">
+                <Border CornerRadius="10"
+                        Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                        BorderThickness="1"
+                        Padding="16"
+                        Width="300"
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Center">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Título para entrada encriptada"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                        <TextBlock Text="Asigna un tag o título para identificar esta entrada sin revelar su contenido."
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                        <TextBox Text="{Binding PendingTag}"
+                                 Watermark="Ej: Contraseña GitHub"
+                                 FontSize="13"
+                                 CornerRadius="6" />
+                        <Grid ColumnDefinitions="*,*">
+                            <Button Grid.Column="0" Content="Cancelar" Margin="0,0,6,0" CornerRadius="6" HorizontalAlignment="Stretch" Command="{Binding CancelTagDialogCommand}" />
+                            <Button Grid.Column="1" Content="Guardar" Margin="6,0,0,0" CornerRadius="6" HorizontalAlignment="Stretch"
+                                    IsVisible="{Binding !IsEditingTag}" Command="{Binding ConfirmEncryptCommand}" />
+                            <Button Grid.Column="1" Content="Guardar tag" Margin="6,0,0,0" CornerRadius="6" HorizontalAlignment="Stretch"
+                                    IsVisible="{Binding IsEditingTag}" Command="{Binding SaveTagCommand}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Border>
+
             <!-- Vista previa ampliada de imágenes -->
             <Border Grid.Row="0"
-                    Grid.RowSpan="4"
-                    CornerRadius="12"
-                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                    IsVisible="{Binding IsImagePreviewOpen}">
+                     Grid.RowSpan="4"
+                     CornerRadius="12"
+                     Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                     IsVisible="{Binding IsImagePreviewOpen}">
                 <Grid Margin="16">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>

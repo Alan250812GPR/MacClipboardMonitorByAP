@@ -114,7 +114,16 @@ public class ClipboardRepository : IClipboardRepository
 
         tracked.IsEncrypted = true;
         tracked.CipherText = item.CipherText;
+        tracked.EncryptedTag = item.EncryptedTag;
         tracked.Content = string.Empty;
+        await _dbContext.SaveChangesAsync();
+    }
+
+    public async Task UpdateEncryptedTagAsync(int id, string? tag)
+    {
+        var tracked = await _dbContext.ClipboardItems.FindAsync(id);
+        if (tracked is null) return;
+        tracked.EncryptedTag = string.IsNullOrWhiteSpace(tag) ? null : tag.Trim();
         await _dbContext.SaveChangesAsync();
     }
 

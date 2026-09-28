@@ -32,11 +32,26 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     public ICommand ClearSearchCommand { get; }
     public ICommand OpenImagePreviewCommand { get; }
     public ICommand CloseImagePreviewCommand { get; }
+    public ICommand OpenFullPreviewCommand { get; }
+    public ICommand CloseFullPreviewCommand { get; }
     public ICommand OpenSettingsCommand { get; }
     public ICommand CloseSettingsCommand { get; }
     public ICommand StartRecordingCommand { get; }
     public ICommand RestoreDefaultHotkeyCommand { get; }
     public ICommand EncryptItemCommand { get; }
+    public ICommand RequestEncryptCommand { get; }
+    public ICommand ConfirmEncryptCommand { get; }
+    public ICommand CancelTagDialogCommand { get; }
+    public ICommand EditTagCommand { get; }
+    public ICommand SaveTagCommand { get; }
+
+    // Comparador estable para historial: fecha DESC, id DESC
+    private static readonly IComparer<ClipboardItem> HistoryComparer = Comparer<ClipboardItem>.Create((a, b) =>
+    {
+        int c = b.CreatedAt.CompareTo(a.CreatedAt);
+        if (c != 0) return c;
+        return b.Id.CompareTo(a.Id);
+    });
 
     // Huella del último secreto copiado, para evitar que el monitor lo re-capture en texto plano.
     private string? _suppressedSecretFingerprint;
@@ -80,6 +95,55 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         get => _previewZoom;
         set => this.RaiseAndSetIfChanged(ref _previewZoom, Math.Clamp(value, 0.5, 4.0));
     }
+
+    // Vista previa completa (clic derecho) — solo lectura, exenta para encriptadas.
+    private bool _isFullPreviewOpen;
+    public bool IsFullPreviewOpen
+    {
+        get => _isFullPreviewOpen;
+        set => this.RaiseAndSetIfChanged(ref _isFullPreviewOpen, value);
+    }
+
+    private ClipboardItem? _fullPreviewItem;
+    public ClipboardItem? FullPreviewItem
+    {
+        get => _fullPreviewItem;
+        private set => this.RaiseAndSetIfChanged(ref _fullPreviewItem, value);
+    }
+
+    private string? _fullPreviewText;
+    public string? FullPreviewText
+    {
+        get => _fullPreviewText;
+        private set => this.RaiseAndSetIfChanged(ref _fullPreviewText, value);
+    }
+
+    private Bitmap? _fullPreviewBitmap;
+    private Bitmap? _fullPreviewImageSource;
+    public Bitmap? FullPreviewImageSource
+    {
+        get => _fullPreviewImageSource;
+        private set => this.RaiseAndSetIfChanged(ref _fullPreviewImageSource, value);
+    }
+
+    // Diálogo de tag/título para encriptadas.
+    private bool _isTagDialogOpen;
+    public bool IsTagDialogOpen
+    {
+        get => _isTagDialogOpen;
+        set => this.RaiseAndSetIfChanged(ref _isTagDialogOpen, value);
+    }
+
+    private string _pendingTag = string.Empty;
+    public string PendingTag
+    {
+        get => _pendingTag;
+        set => this.RaiseAndSetIfChanged(ref _pendingTag, value);
+    }
+
+    private ClipboardItem? _pendingEncryptItem;
+    private ClipboardItem? _editingTagItem;
+    public bool IsEditingTag => _editingTagItem != null;
 
     // Ajustes (atajo global configurable).
     private readonly AppConfigService _config;
@@ -143,7 +207,9 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
 
         _filterSubscription = _historyList.Connect()
             .AutoRefresh(x => x.CreatedAt)
-            .Sort(SortExpressionComparer<ClipboardItem>.Descending(x => x.CreatedAt))
+            .AutoRefresh(x => x.EncryptedTag)
+            .AutoRefresh(x => x.IsEncrypted)
+            .Sort(HistoryComparer)
             .Filter(filterPredicate)
             .ObserveOn(RxApp.MainThreadScheduler)
             .Bind(out _history)
@@ -156,12 +222,20 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         OpenImagePreviewCommand = ReactiveCommand.Create<ClipboardItem>(OpenImagePreview);
         CloseImagePreviewCommand = ReactiveCommand.Create(CloseImagePreview);
 
+        OpenFullPreviewCommand = ReactiveCommand.Create<ClipboardItem>(OpenFullPreview);
+        CloseFullPreviewCommand = ReactiveCommand.Create(CloseFullPreview);
+
         OpenSettingsCommand = ReactiveCommand.Create(() => IsSettingsOpen = true);
         CloseSettingsCommand = ReactiveCommand.Create(CloseSettings);
         StartRecordingCommand = ReactiveCommand.Create(() => IsRecordingHotkey = true);
         RestoreDefaultHotkeyCommand = ReactiveCommand.Create(RestoreDefaultHotkey);
 
         EncryptItemCommand = ReactiveCommand.CreateFromTask<ClipboardItem>(EncryptItemAsync);
+        RequestEncryptCommand = ReactiveCommand.Create<ClipboardItem>(RequestEncrypt);
+        ConfirmEncryptCommand = ReactiveCommand.CreateFromTask(ConfirmEncryptAsync);
+        CancelTagDialogCommand = ReactiveCommand.Create(CloseTagDialog);
+        EditTagCommand = ReactiveCommand.Create<ClipboardItem>(EditTag);
+        SaveTagCommand = ReactiveCommand.CreateFromTask(SaveTagAsync);
 
         DeleteItemCommand = ReactiveCommand.CreateFromTask<ClipboardItem>(async item =>
         {
@@ -348,8 +422,65 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         item.CipherText = cipher;
         item.Content = string.Empty;
         item.IsEncrypted = true;
+        // Si viene de diálogo con tag, ya está asignado; si no, queda sin tag (EncryptedDisplay mostrará ••••••••)
+        await _repository.MarkEncryptedAsync(item);
+    }
+
+    // Solicita encriptar: abre diálogo para tag/título.
+    private void RequestEncrypt(ClipboardItem item)
+    {
+        if (item is null || !item.IsText || item.IsEncrypted) return;
+        _pendingEncryptItem = item;
+        _editingTagItem = null;
+        PendingTag = string.Empty;
+        this.RaisePropertyChanged(nameof(IsEditingTag));
+        IsTagDialogOpen = true;
+    }
+
+    // Edita el tag de una entrada ya encriptada.
+    private void EditTag(ClipboardItem item)
+    {
+        if (item is null || !item.IsEncrypted) return;
+        _editingTagItem = item;
+        _pendingEncryptItem = null;
+        PendingTag = item.EncryptedTag ?? string.Empty;
+        this.RaisePropertyChanged(nameof(IsEditingTag));
+        IsTagDialogOpen = true;
+    }
+
+    private void CloseTagDialog()
+    {
+        IsTagDialogOpen = false;
+        PendingTag = string.Empty;
+        _pendingEncryptItem = null;
+        _editingTagItem = null;
+        this.RaisePropertyChanged(nameof(IsEditingTag));
+    }
+
+    private async Task ConfirmEncryptAsync()
+    {
+        if (_pendingEncryptItem is null) return;
+        var item = _pendingEncryptItem;
+        var tag = string.IsNullOrWhiteSpace(PendingTag) ? null : PendingTag.Trim();
+        var cipher = EncryptionService.Encrypt(item.Content);
+        if (cipher is null) return;
+
+        item.CipherText = cipher;
+        item.Content = string.Empty;
+        item.EncryptedTag = tag;
+        item.IsEncrypted = true;
 
         await _repository.MarkEncryptedAsync(item);
+        CloseTagDialog();
+    }
+
+    private async Task SaveTagAsync()
+    {
+        if (_editingTagItem is null) return;
+        var tag = string.IsNullOrWhiteSpace(PendingTag) ? null : PendingTag.Trim();
+        _editingTagItem.EncryptedTag = tag;
+        await _repository.UpdateEncryptedTagAsync(_editingTagItem.Id, tag);
+        CloseTagDialog();
     }
 
     private static string? Decrypt(string? cipherText)
@@ -407,6 +538,56 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     public void CloseImagePreview()
     {
         IsImagePreviewOpen = false;
+    }
+
+    // Abre la vista previa completa (clic derecho) — solo lectura, exenta para encriptadas.
+    private void OpenFullPreview(ClipboardItem item)
+    {
+        if (item is null) return;
+        if (item.IsEncrypted) return; // exentas
+
+        FullPreviewItem = item;
+
+        if (item.IsImage && item.ImageBytes is { Length: > 0 })
+        {
+            try
+            {
+                using var stream = new MemoryStream(item.ImageBytes);
+                _fullPreviewBitmap?.Dispose();
+                _fullPreviewBitmap = new Bitmap(stream);
+                FullPreviewImageSource = _fullPreviewBitmap;
+            }
+            catch
+            {
+                FullPreviewImageSource = null;
+            }
+            FullPreviewText = null;
+        }
+        else if (item.IsText)
+        {
+            FullPreviewImageSource = null;
+            FullPreviewText = item.Content;
+        }
+        else if (item.IsFile)
+        {
+            FullPreviewImageSource = null;
+            FullPreviewText = item.FilePaths;
+        }
+        else
+        {
+            FullPreviewImageSource = null;
+            FullPreviewText = item.Content;
+        }
+
+        PreviewZoom = 1.0;
+        IsFullPreviewOpen = true;
+    }
+
+    public void CloseFullPreview()
+    {
+        IsFullPreviewOpen = false;
+        FullPreviewItem = null;
+        FullPreviewText = null;
     }
 
     public void CloseSettings()
@@ -486,8 +667,12 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     // Ajusta el zoom de la vista previa (delta > 0 acerca, < 0 aleja).
     public void ZoomPreview(double delta)
     {
-        if (!IsImagePreviewOpen) return;
-        PreviewZoom += delta > 0 ? 0.2 : -0.2;
+        if (!IsImagePreviewOpen && !IsFullPreviewOpen) return;
+        // Solo aplicar zoom si la preview visible es de imagen
+        if (IsImagePreviewOpen || (IsFullPreviewOpen && FullPreviewItem?.IsImage == true))
+        {
+            PreviewZoom += delta > 0 ? 0.2 : -0.2;
+        }
     }
 
     // Navega el historial con las flechas del teclado (delta: +1 abajo, -1 arriba).
@@ -526,8 +711,11 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
 
         return item => item.Type switch
         {
+            ClipboardItemType.Texto when item.IsEncrypted =>
+                !string.IsNullOrEmpty(item.EncryptedTag) &&
+                item.EncryptedTag!.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0,
+
             ClipboardItemType.Texto =>
-                !item.IsEncrypted &&
                 !string.IsNullOrEmpty(item.Content) &&
                 item.Content.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0,
 
@@ -546,6 +734,7 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         _purgeSubscription?.Dispose();
         _filterSubscription?.Dispose();
         _previewBitmap?.Dispose();
+        _fullPreviewBitmap?.Dispose();
         _historyList?.Dispose();
     }
 }

@@ -15,5 +15,6 @@ public interface IClipboardRepository
     Task ClearAllAsync();
     Task PurgeExpiredAsync();
     Task MarkEncryptedAsync(ClipboardItem item);
+    Task UpdateEncryptedTagAsync(int id, string? tag);
     Task TouchAsync(int id);
 }

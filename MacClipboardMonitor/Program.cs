@@ -25,3 +25,7 @@ sealed class Program
             .LogToTrace()
             .UseReactiveUI();
 }
+
+/*
+agregar vista previa y tags para identificar mas facilmente lo encriptado
+*/

@@ -19,6 +19,12 @@ public class AppConfigService
     // Versión M.M.M última vista/registrada. Solo la última puede ejecutarse.
     public string LatestVersion { get; set; } = string.Empty;
 
+    // Modal de bienvenida por permisos: si ya se mostró al primer arranque.
+    public bool HasWelcomeDialogShown { get; set; } = false;
+
+    // Se indicó al usuario que debe conceder el permiso de Accesibilidad.
+    public bool AccessibilityPermissionRequested { get; set; } = false;
+
     public static AppConfigService Load()
     {
         try

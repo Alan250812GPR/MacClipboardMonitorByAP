@@ -159,11 +159,21 @@
                     CornerRadius="6"
                     Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
                     IsVisible="{Binding ShowPasteWarning}">
-                <TextBlock FontSize="11"
-                           TextWrapping="Wrap"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                           Text="⚠ Para pegar directo (doble clic), activa esta app en Ajustes → Privacidad → Accesibilidad." />
-            </Border>
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Grid.Column="0"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Text="⚠ MacClipboardMonitor necesita el permiso de Accesibilidad: el atajo global Ctrl+Cmd+V y el pegado directo no funcionarían." />
+                    <Button Grid.Column="1"
+                            Margin="10,0,0,0"
+                            Padding="8,2"
+                            FontSize="10"
+                            HorizontalAlignment="Right"
+                            Content="Conceder permiso"
+                            Command="{Binding #RootWindow.((vm:MainWindowViewModel)DataContext).OpenAccessibilitySettingsCommand}" />
+                </Grid>
+</Border>
 
             <ListBox Grid.Row="3" 
                      x:Name="HistoryList"
@@ -311,6 +321,55 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!-- Permiso de Accesibilidad — bienvenida (bloquea la ventana hasta decidir) -->
+            <Border Grid.Row="0"
+                    Grid.RowSpan="4"
+                    CornerRadius="12"
+                    Background="#99000000"
+                    IsVisible="{Binding IsWelcomeOpen}"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch">
+                <Border VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Width="360"
+                        CornerRadius="10"
+                        Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                        BorderThickness="1"
+                        Padding="20">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Necesito un permiso"
+                                   FontSize="16"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                        <TextBlock FontSize="11.5"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Text="Para que el atajo global Ctrl + Cmd + V y el pegado directo (doble clic) funcionen, macOS requiere el permiso de Accesibilidad. Puedes concederlo en Ajustes y volver aquí." />
+                        <Button Content="Abrir Ajustes del Sistema"
+                                HorizontalAlignment="Stretch"
+                                CornerRadius="6"
+                                Padding="10,8"
+                                Command="{Binding OpenAccessibilitySettingsCommand}" />
+                        <Button Content="Ya lo concedí — Verificar"
+                                HorizontalAlignment="Stretch"
+                                CornerRadius="6"
+                                Padding="10,8"
+                                Command="{Binding VerifyPermissionCommand}" />
+                        <Button Content="Omitir (el atajo no funcionará)"
+                                HorizontalAlignment="Stretch"
+                                CornerRadius="6"
+                                Padding="10,8"
+                                Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                Command="{Binding SkipWelcomeCommand}" />
+                        <TextBlock FontSize="9"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                                   Text="Pulsa Esc para cerrar este diálogo sin decidir." />
+                    </StackPanel>
+                </Border>
+            </Border>
 
             <!-- Vista previa completa (clic derecho) — solo lectura, exenta para encriptadas -->
             <Border Grid.Row="0"

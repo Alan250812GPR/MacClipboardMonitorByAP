@@ -149,6 +149,7 @@ public partial class MainWindow : Window
                 {
                     Show();
                     Activate();
+                    (DataContext as MainWindowViewModel)?.RefreshPermissionState();
                 }
             });
         }
@@ -173,6 +174,19 @@ public partial class MainWindow : Window
     private void OnPreviewKeyDownTunnel(object? sender, KeyEventArgs e)
     {
         if (DataContext is not MainWindowViewModel vm) return;
+
+        // El modal de permisos consume Esc y bloquea el resto de navegación.
+        if (vm.IsWelcomeOpen)
+        {
+            if (e.Key == Key.Escape)
+            {
+                vm.IsWelcomeOpen = false; // solo cierra, no marca como visto
+                e.Handled = true;
+                return;
+            }
+            e.Handled = true; // mientras está abierto, bloquear historial
+            return;
+        }
 
         // Captura de un nuevo atajo global: consume la tecla antes que nada.
         if (vm.IsRecordingHotkey)

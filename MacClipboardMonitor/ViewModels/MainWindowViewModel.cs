@@ -44,6 +44,9 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     public ICommand CancelTagDialogCommand { get; }
     public ICommand EditTagCommand { get; }
     public ICommand SaveTagCommand { get; }
+    public ICommand OpenAccessibilitySettingsCommand { get; }
+    public ICommand VerifyPermissionCommand { get; }
+    public ICommand SkipWelcomeCommand { get; }
 
     // Comparador estable para historial: fecha DESC, id DESC
     private static readonly IComparer<ClipboardItem> HistoryComparer = Comparer<ClipboardItem>.Create((a, b) =>
@@ -229,6 +232,10 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         CloseSettingsCommand = ReactiveCommand.Create(CloseSettings);
         StartRecordingCommand = ReactiveCommand.Create(() => IsRecordingHotkey = true);
         RestoreDefaultHotkeyCommand = ReactiveCommand.Create(RestoreDefaultHotkey);
+
+        OpenAccessibilitySettingsCommand = ReactiveCommand.Create(AccessibilityPermissionService.OpenSettings);
+        VerifyPermissionCommand = ReactiveCommand.CreateFromTask(VerifyPermissionAsync);
+        SkipWelcomeCommand = ReactiveCommand.Create(SkipWelcome);
 
         EncryptItemCommand = ReactiveCommand.CreateFromTask<ClipboardItem>(EncryptItemAsync);
         RequestEncryptCommand = ReactiveCommand.Create<ClipboardItem>(RequestEncrypt);
@@ -499,8 +506,19 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     private static string HashText(string text) =>
         Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
 
-    // Indica si falta el permiso de Accesibilidad para pegar directo.
-    public bool ShowPasteWarning => !_pasteService.CanPaste();
+    // Indica si falta el permiso de Accesibilidad (afecta al atajo global y al pegado directo).
+    public bool IsAccessibilityPermissionMissing => !AccessibilityPermissionService.IsTrusted();
+
+    // Banner recordatorio si falta el permiso (binding existente ShowPasteWarning delega aquí).
+    public bool ShowPasteWarning => IsAccessibilityPermissionMissing;
+
+    // Modal de bienvenida: visible el primer arranque si no se ha concedido el permiso.
+    private bool _isWelcomeOpen;
+    public bool IsWelcomeOpen
+    {
+        get => _isWelcomeOpen;
+        set => this.RaiseAndSetIfChanged(ref _isWelcomeOpen, value);
+    }
 
     // Copia el elemento y envía Cmd+V a la app activa (la ventana debe ocultarse antes).
     public async Task PasteItemAsync(ClipboardItem item)
@@ -736,5 +754,40 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         _previewBitmap?.Dispose();
         _fullPreviewBitmap?.Dispose();
         _historyList?.Dispose();
+    }
+
+    /// <summary>
+    /// Inicialización dependiente de la vista: se llama desde App.axaml.cs tras asignar DataContext.
+    /// Muestra el modal al primer arranque si no se ha concedido el permiso.
+    /// </summary>
+    public void OnViewInitialized()
+    {
+        if (_config.HasWelcomeDialogShown || !IsAccessibilityPermissionMissing)
+            return; // permiso ya concedido o bienvenida ya vista
+
+        IsWelcomeOpen = true;
+        _config.AccessibilityPermissionRequested = true;
+        _config.Save();
+    }
+
+    private async Task VerifyPermissionAsync()
+    {
+        var ok = await AccessibilityPermissionService.CheckAfterDelay(1500);
+        if (ok)
+            IsWelcomeOpen = false;
+    }
+
+    private void SkipWelcome()
+    {
+        _config.HasWelcomeDialogShown = true;
+        _config.Save();
+        IsWelcomeOpen = false;
+    }
+
+    /// <summary>Recarga el estado de permisos tras volver de Ajustes.</summary>
+    public void RefreshPermissionState()
+    {
+        this.RaisePropertyChanged(nameof(ShowPasteWarning));
+        this.RaisePropertyChanged(nameof(IsAccessibilityPermissionMissing));
     }
 }

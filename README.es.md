@@ -66,7 +66,7 @@
 ## Requisitos
 
 - macOS 13 o superior
-- Permiso de Accesibilidad (Ajustes del Sistema → Privacidad y seguridad → Accesibilidad) — solo para el pegado directo
+- Permiso de Accesibilidad (Ajustes del Sistema → Privacidad y seguridad → Accesibilidad) — necesario para el atajo global y el pegado directo
 - .NET 8 SDK — solo si quieres compilar desde el código fuente
 
 ---
@@ -206,15 +206,54 @@ MacClipboardMonitor/
 
 ## Permisos
 
-**Accesibilidad** solo es necesario para el doble clic de pegado directo. Si aparece el aviso:
+**Accesibilidad** — necesario para el atajo global `Ctrl + Cmd + V` y para el pegado directo.
+Al primer arranque, si no está concedido, aparece un **modal de bienvenida** con tres opciones:
 
-`Ajustes del Sistema → Privacidad y seguridad → Accesibilidad → activa MacClipboardMonitor`
+- **Abrir Ajustes del Sistema** → abre directamente `Privacidad y seguridad → Accesibilidad`.
+- **Ya lo concedí — Verificar** → espera 1,5 s y vuelve a comprobar.
+- **Omitir** → la app sigue funcionando con clic simple; el atajo y el doble clic se quedan inactivos y queda un
+  **banner recordatorio** en la ventana, reabrible cuando quieras.
 
-Sin él, la copia con clic simple funciona igualmente.
+Para concederlo manualmente: `Ajustes del Sistema → Privacidad y seguridad → Accesibilidad → activa MacClipboardMonitor`.
+La copia con clic simple y el historial funcionan en todo momento, con o sin el permiso.
+
+---
+
+## Firmar y notarizar (opcional, para distribución)
+
+El instalador `.dmg` se genera sin firmar para desarrollo. Si vas a distribuir la app, firma con un
+certificado Developer ID y notárízala para evitar las advertencias de Gatekeeper:
+
+1. Consigue un certificado `Developer ID Application` en https://developer.apple.com e instálalo en
+   la llave de sistema (Acceso a la llave).
+2. Ejecuta el build con la variable:
+
+   ```bash
+   DEVELOPER_ID_APPLICATION="Developer ID Application: Tu Nombre" \
+     ./MacClipboardMonitor/build_installer.sh
+   ```
+
+3. Para notarizar (recomendado), añade tus credenciales:
+
+   ```bash
+   DEVELOPER_ID_APPLICATION="Developer ID Application: Tu Nombre" \
+     NOTARY_EMAIL="tu@appleid.com" \
+     NOTARY_TEAM_ID="XXXXXXXXXX" \
+     ./MacClipboardMonitor/build_installer.sh
+   ```
+
+  El `.dmg` se llama `MacClipboardMonitor_v1.0.7.dmg` (versión incrementada automáticamente).
 
 ---
 
 ## Changelog
+
+### 1.0.7
+- Modal de bienvenida para solicitar el permiso de Accesibilidad (atajo global + pegado directo)
+- Banner recordatorio con botón «Conceder permiso» que abre Ajustes del Sistema
+- Instalador `.dmg` versionado (`MacClipboardMonitor_vX.Y.Z.dmg`) con icono `.icns` generado desde `tray.png`
+- Firma con Developer ID y notarización opcionales mediante variables de entorno
+- Limpieza automática de `.dmg` y lock de versiones anteriores al publicar
 
 ### 1.0.6
 - Overlay de vista previa completa con clic derecho (solo lectura, encriptadas exentas)

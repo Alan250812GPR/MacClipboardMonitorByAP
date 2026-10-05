@@ -49,6 +49,7 @@ public partial class App : Application
             
             var viewModel = new MainWindowViewModel(clipboardService, repository, pasteService, config);
             mainWindow.DataContext = viewModel;
+            viewModel.OnViewInitialized(); // abrir modal de bienvenida si corresponde
             desktop.MainWindow = mainWindow;
 
             // La ventana recarga el hook global cuando cambia el atajo desde Ajustes.
@@ -109,6 +110,8 @@ public partial class App : Application
         {
             window.Show();
             window.Activate();
+            if (window.DataContext is MainWindowViewModel vm)
+                vm.RefreshPermissionState();
         }
     }
 }

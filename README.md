@@ -251,7 +251,7 @@ MacClipboardMonitor is free, open-source, and has no telemetry. If it saves you 
 
 <!-- TODO: Replace # with your actual URLs -->
 
-- **PayPal:** [PayPal](https://paypal.me/AlanGilberto) <!-- e.g. https://paypal.me/AlanGilberto -->
+- **PayPal:** [https://paypal.me/AlanGilberto](https://paypal.me/AlanGilberto)
 
 Every donation — no matter the size — is genuinely appreciated and helps keep the project maintained.
 

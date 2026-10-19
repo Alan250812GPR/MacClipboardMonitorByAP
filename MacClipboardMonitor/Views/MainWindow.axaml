@@ -563,6 +563,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -621,6 +622,21 @@
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                    Text="Usa una letra o tecla F1-F12 con al menos Ctrl o Cmd. Esc cancela la grabación." />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="4" Margin="0,4,0,0" Spacing="6">
+                        <TextBlock Text="Integración MCP (ChatGPT / Claude)"
+                                   FontSize="12"
+                                   Margin="0,0,0,2"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                        <ToggleSwitch IsChecked="{Binding IsMcpEnabled}"
+                                      OnContent="Activado"
+                                      OffContent="Desactivado"
+                                      Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" />
+                        <TextBlock FontSize="10.5"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Text="Permite que ChatGPT o Claude envíen el último código generado directamente al portapapeles y al historial." />
                     </StackPanel>
                 </Grid>
             </Border>

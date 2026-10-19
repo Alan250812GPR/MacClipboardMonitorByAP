@@ -25,6 +25,9 @@ public class AppConfigService
     // Se indicó al usuario que debe conceder el permiso de Accesibilidad.
     public bool AccessibilityPermissionRequested { get; set; } = false;
 
+    // Integración MCP: permite que ChatGPT / Claude envíen el último código al portapapeles.
+    public bool McpEnabled { get; set; } = true;
+
     public static AppConfigService Load()
     {
         try

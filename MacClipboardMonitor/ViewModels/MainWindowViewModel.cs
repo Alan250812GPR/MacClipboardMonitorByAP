@@ -161,6 +161,20 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         set => this.RaiseAndSetIfChanged(ref _isSettingsOpen, value);
     }
 
+    private bool _isMcpEnabled;
+    public bool IsMcpEnabled
+    {
+        get => _isMcpEnabled;
+        set
+        {
+            if (this.RaiseAndSetIfChanged(ref _isMcpEnabled, value))
+            {
+                _config.McpEnabled = value;
+                _config.Save();
+            }
+        }
+    }
+
     private bool _isRecordingHotkey;
     public bool IsRecordingHotkey
     {
@@ -201,6 +215,7 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         _repository = repository;
         _pasteService = pasteService;
         _config = config;
+        _isMcpEnabled = config.McpEnabled;
 
         // Filtro de búsqueda: se recalcula al escribir (con debounce de 250 ms).
         var filterPredicate = this.WhenAnyValue(x => x.SearchText)

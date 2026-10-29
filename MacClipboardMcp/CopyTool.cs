@@ -25,9 +25,15 @@ public static class CopyTool
             return "MCP desactivado: actívalo en Ajustes de MacClipboardMonitor.";
         }
 
+        const int maxChars = 512 * 1024;
         if (string.IsNullOrEmpty(content))
         {
             return "Nada que copiar: el contenido está vacío.";
+        }
+
+        if (content.Length > maxChars)
+        {
+            return $"Contenido demasiado grande ({content.Length} caracteres; máximo {maxChars}).";
         }
 
         var error = WriteToClipboard(content);

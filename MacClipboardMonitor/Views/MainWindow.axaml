@@ -117,7 +117,7 @@
                         Height="34"
                         CornerRadius="17"
                         Margin="0,0,6,0"
-                        ToolTip.Tip="Borrar todo el historial">
+                        ToolTip.Tip="Borrar historial (conserva las entradas encriptadas)">
                     <TextBlock Text="🗑️" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Button>
 
@@ -636,7 +636,12 @@
                         <TextBlock FontSize="10.5"
                                    TextWrapping="Wrap"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                   Text="Permite que ChatGPT o Claude envíen el último código generado directamente al portapapeles y al historial." />
+                                   Text="Permite que un cliente MCP local envíe texto al portapapeles y al historial. No hay autenticación extra: desactívalo si no lo usas." />
+                        <TextBlock FontSize="10.5"
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Text="Las entradas encriptadas ocultan el texto en el historial con una clave de este Mac. Al copiarlas, el secreto vuelve al portapapeles en texto plano. «Borrar historial» no elimina las encriptadas." />
                     </StackPanel>
                 </Grid>
             </Border>

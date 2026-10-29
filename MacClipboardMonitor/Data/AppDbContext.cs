@@ -30,5 +30,9 @@ public class AppDbContext : DbContext
         try { Database.ExecuteSqlRaw("ALTER TABLE ClipboardItems ADD COLUMN IsEncrypted INTEGER NOT NULL DEFAULT 0"); } catch { /* ya existe */ }
         try { Database.ExecuteSqlRaw("ALTER TABLE ClipboardItems ADD COLUMN CipherText TEXT NULL"); } catch { /* ya existe */ }
         try { Database.ExecuteSqlRaw("ALTER TABLE ClipboardItems ADD COLUMN EncryptedTag TEXT NULL"); } catch { /* ya existe */ }
+
+        try { Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_ClipboardItems_CreatedAt ON ClipboardItems (CreatedAt)"); } catch { /* ignorar */ }
+        try { Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_ClipboardItems_ImageHash ON ClipboardItems (ImageHash)"); } catch { /* ignorar */ }
+        try { Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_ClipboardItems_Type_CreatedAt ON ClipboardItems (Type, CreatedAt)"); } catch { /* ignorar */ }
     }
 }

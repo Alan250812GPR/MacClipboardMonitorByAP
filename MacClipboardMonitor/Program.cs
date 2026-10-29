@@ -12,9 +12,16 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // Guard de versión única: solo la última M.M.M puede correr (silencioso).
-        MacClipboardMonitor.Services.VersionGuard.Enforce();
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        try
+        {
+            // Guard de versión única: solo la última M.M.M puede correr (silencioso).
+            MacClipboardMonitor.Services.VersionGuard.Enforce();
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        finally
+        {
+            MacClipboardMonitor.Services.VersionGuard.Release();
+        }
     }
 
     // Avalonia configuration, don't remove; also used by visual designer.
@@ -25,7 +32,3 @@ sealed class Program
             .LogToTrace()
             .UseReactiveUI();
 }
-
-/*
-agregar vista previa y tags para identificar mas facilmente lo encriptado
-*/

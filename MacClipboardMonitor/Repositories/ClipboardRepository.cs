@@ -27,52 +27,15 @@ public class ClipboardRepository : IClipboardRepository
             .ToListAsync();
     }
 
-    public async Task AddItemAsync(ClipboardItem item)
+    public async Task<ClipboardItem> AddItemAsync(ClipboardItem item)
     {
         // 1. Anti-duplicados según el tipo: si existe, mover al tope (Touch) para preservar LIFO en DB
-        switch (item.Type)
+        var existing = await FindDuplicateAsync(item);
+        if (existing != null)
         {
-            case ClipboardItemType.Texto:
-                var existingText = await _dbContext.ClipboardItems
-                    .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Texto &&
-                                   x.Content.ToLower() == item.Content.ToLower());
-                if (existingText != null)
-                {
-                    existingText.CreatedAt = DateTime.Now;
-                    await _dbContext.SaveChangesAsync();
-                    return;
-                }
-                break;
-
-            case ClipboardItemType.Imagen:
-                if (!string.IsNullOrEmpty(item.ImageHash))
-                {
-                    var existingImage = await _dbContext.ClipboardItems
-                        .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Imagen &&
-                                       x.ImageHash == item.ImageHash);
-                    if (existingImage != null)
-                    {
-                        existingImage.CreatedAt = DateTime.Now;
-                        await _dbContext.SaveChangesAsync();
-                        return;
-                    }
-                }
-                break;
-
-            case ClipboardItemType.Archivo:
-                if (!string.IsNullOrEmpty(item.FilePaths))
-                {
-                    var existingFile = await _dbContext.ClipboardItems
-                        .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Archivo &&
-                                       x.FilePaths == item.FilePaths);
-                    if (existingFile != null)
-                    {
-                        existingFile.CreatedAt = DateTime.Now;
-                        await _dbContext.SaveChangesAsync();
-                        return;
-                    }
-                }
-                break;
+            existing.CreatedAt = DateTime.Now;
+            await _dbContext.SaveChangesAsync();
+            return existing;
         }
 
         // 2. Limpieza por caducidad: texto >48h, imagen/archivo >1h
@@ -91,9 +54,37 @@ public class ClipboardRepository : IClipboardRepository
                 .OrderBy(x => x.CreatedAt)
                 .Take(count - IClipboardRepository.MaxItems)
                 .ToListAsync();
-                
+
             _dbContext.ClipboardItems.RemoveRange(oldItems);
             await _dbContext.SaveChangesAsync();
+        }
+
+        return item;
+    }
+
+    private async Task<ClipboardItem?> FindDuplicateAsync(ClipboardItem item)
+    {
+        switch (item.Type)
+        {
+            case ClipboardItemType.Texto:
+                return await _dbContext.ClipboardItems
+                    .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Texto &&
+                                              x.Content.ToLower() == item.Content.ToLower());
+
+            case ClipboardItemType.Imagen:
+                if (string.IsNullOrEmpty(item.ImageHash)) return null;
+                return await _dbContext.ClipboardItems
+                    .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Imagen &&
+                                              x.ImageHash == item.ImageHash);
+
+            case ClipboardItemType.Archivo:
+                if (string.IsNullOrEmpty(item.FilePaths)) return null;
+                return await _dbContext.ClipboardItems
+                    .FirstOrDefaultAsync(x => x.Type == ClipboardItemType.Archivo &&
+                                              x.FilePaths == item.FilePaths);
+
+            default:
+                return null;
         }
     }
 
@@ -137,9 +128,12 @@ public class ClipboardRepository : IClipboardRepository
         }
     }
 
+    // Conserva las entradas encriptadas: solo se borran una a una.
     public async Task ClearAllAsync()
     {
-        await _dbContext.ClipboardItems.ExecuteDeleteAsync();
+        await _dbContext.ClipboardItems
+            .Where(x => !x.IsEncrypted)
+            .ExecuteDeleteAsync();
     }
 
     public async Task PurgeExpiredAsync()

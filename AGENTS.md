@@ -66,14 +66,15 @@ Program.cs (Main)
        crea: MainWindow, AppDbContext, ClipboardRepository,
              PollingClipboardMonitorService, MainWindowViewModel
        asigna DataContext + SetupTrayIcon + AutoStartManager.RegisterAutoStart()
+       al salir: Dispose ViewModel + DbContext + VersionGuard.Release()
 
-PollingClipboardMonitorService (Rx, cada 750ms)
+PollingClipboardMonitorService (Rx, cada 750ms, Concat)
   -> IObservable<ClipboardCapture> ClipboardChanged
        detecta formato del portapapeles: Archivo > Imagen > Texto
-  -> MainWindowViewModel se suscribe
-       -> dedupe en memoria según tipo (texto: OrdinalIgnoreCase, imagen: hash, archivo: rutas)
-       -> ClipboardRepository.AddItemAsync (SQLite)
-       -> inserta en SourceList<ClipboardItem> (History)
+  -> MainWindowViewModel espera LoadHistory y se suscribe
+       -> dedupe en memoria según tipo (texto: OrdinalIgnoreCase, imagen: hash, archivo: rutas ordenadas)
+       -> ClipboardRepository.AddItemAsync (SQLite) devuelve el ítem persistido
+       -> inserta o actualiza SourceList<ClipboardItem> (History)
 
 MainWindow (SharpHook global)
   -> Ctrl+Cmd+V alterna Show/Hide de la ventana
@@ -88,28 +89,35 @@ TrayIcon (App.axaml.cs)
 |-------------|--------------------------|-----------|--------|
 | Texto       | `Content` ToLower        | 48 horas  | 100 global |
 | Imagen      | `ImageHash` (SHA256)     | 1 hora    | 100 global |
-| Archivo     | `FilePaths` exacto       | 1 hora    | 100 global |
+| Archivo     | `FilePaths` ordenadas    | 1 hora    | 100 global |
 | Encriptado  | no aplica                | nunca     | 100 global (no se poda) |
 
 Las entradas encriptadas (`IsEncrypted=true`) son texto marcado por el usuario que
-**nunca caduca** ni es recortado por el límite; solo se borran manualmente. Se guardan
-cifradas en `CipherText` y se descifran al vuelo al copiar (la UI solo muestra `••••••••`).
+**nunca caduca** ni es recortado por el límite; «Borrar historial» las conserva y
+solo se eliminan una a una. Se guardan cifradas en `CipherText` y se descifran al
+vuelo al copiar (la UI solo muestra `••••••••` o el tag). Esto oculta el texto en
+SQLite; no protege frente a quien tenga acceso a esta cuenta de macOS. Al copiar,
+el secreto vuelve al portapapeles del sistema en texto plano.
 
 ## Responsabilidades de cada archivo (clave)
 
 - **MainWindowViewModel.cs**: ÚNICO lugar con lógica de negocio de UI. Contiene:
   - `History` (`ReadOnlyObservableCollection<ClipboardItem>`) ligada a un `SourceList`.
   - `SelectedItem` (setter dispara `OnItemSelected` -> re-copia según tipo).
-  - `ClearHistoryCommand`, `DeleteItemCommand`, `EncryptItemCommand`, `OpenImagePreviewCommand`
+  - `ClearHistoryCommand`, `DeleteItemCommand`, `RequestEncryptCommand`, `OpenImagePreviewCommand`
     y comandos de Ajustes (hotkey) (ReactiveCommand).
   - Búsqueda (`SearchText`) con filtro dinámico (`.Filter()` + throttle 250ms).
-  - `CopyItem` descifra entradas encriptadas y suprime su re-captura en texto plano.
+  - `CopyItemAsync` descifra entradas encriptadas y suprime su re-captura en texto plano.
   - Dedupe en memoria según tipo y limpieza periódica (timer 1 min) de caducados.
+  - `AddItemAsync` devuelve el ítem persistido (nuevo o existente tras Touch) para
+    evitar duplicados fantasma en la UI.
 - **ClipboardRepository.cs**: reglas de persistencia: anti-duplicados según tipo,
   caducidad (texto 48h, imagen/archivo 1h), límite global 100. Las encriptadas
-  no caducan ni se podan (`MarkEncryptedAsync`).
+  no caducan ni se podan (`MarkEncryptedAsync`). `ClearAllAsync` conserva encriptadas.
 - **PollingClipboardMonitorService.cs**: detecta tipo de contenido (archivo > imagen
-  > texto) vía formatos del portapapeles y emite `ClipboardCapture`.
+  > texto) vía formatos del portapapeles y emite `ClipboardCapture`. El polling
+  serializa capturas con `Concat` y `SetTextAsync`/`SetImageAsync`/`SetFilesAsync`
+  devuelven `Task`.
 - **MainWindow.axaml**: SOLO presentación. Toda la lógica vive en el ViewModel.
 - **MainWindow.axaml.cs**: SOLO drag de ventana, hide/show, y hook global de teclado.
 - **App.axaml.cs**: DI manual + creación del `TrayIcon` (menú de bandeja).
@@ -167,9 +175,17 @@ dotnet run --project MacClipboardMonitor
   pero es **configurable** desde Ajustes (⚙️) y se persiste en `~/MacClipboardMonitor.config.json`.
 - **Pegar directo:** el doble clic en una tarjeta copia y simula Cmd+V (CGEvent) hacia
   la app activa; requiere permiso de **Accesibilidad** (`AXIsProcessTrusted`).
-- **Encriptación:** `EncryptionService` usa AES-256-CBC con clave derivada (PBKDF2) de
-  una contraseña fija y sal fija. Las columnas `IsEncrypted` y `CipherText` se agregan
-  con `ALTER TABLE` idempotente.
+- **Encriptación:** `EncryptionService` usa AES-256-CBC. Las entradas nuevas (`v2:`)
+  se cifran con una clave aleatoria en `~/.MacClipboardMonitor.key` (permisos 0600).
+  El esquema legado (PBKDF2-SHA1, 1000 iteraciones, contraseña/sal fijas) se
+  conserva solo para descifrar `CipherText` antiguo. No es un secreto frente a
+  quien use la misma cuenta de macOS. Las columnas `IsEncrypted` y `CipherText`
+  se agregan con `ALTER TABLE` idempotente.
+- **Ciclo de vida:** `App` dispone el ViewModel, el `AppDbContext` y llama a
+  `VersionGuard.Release()` al salir. `AvaloniaImage` cachea un `Bitmap` por ítem
+  y se libera al borrar/purgar/cerrar.
+- **Índices SQLite:** `EnsureSchemaColumns` crea índices idempotentes en
+  `CreatedAt`, `ImageHash` y `(Type, CreatedAt)`.
 - **Overlays internos:** la vista previa de imágenes y el panel de Ajustes son overlays
   dentro de la misma ventana (no son ventanas nuevas); se controlan con
   `IsImagePreviewOpen` / `IsSettingsOpen`.

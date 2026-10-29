@@ -22,8 +22,10 @@ public class PollingClipboardMonitorService : IClipboardMonitorService
     {
         _clipboard = clipboard;
 
+        // Concat serializa cada captura: no se solapan lecturas del portapapeles.
         ClipboardChanged = Observable.Interval(TimeSpan.FromMilliseconds(750))
-            .SelectMany(async _ => await CaptureAsync())
+            .Select(_ => Observable.FromAsync(CaptureAsync))
+            .Concat()
             .Where(capture => capture != null)
             .Select(capture => capture!)
             .DistinctUntilChanged(capture => capture.Fingerprint)
@@ -94,9 +96,8 @@ public class PollingClipboardMonitorService : IClipboardMonitorService
         var data = await _clipboard.GetDataAsync(DataFormats.FileNames);
         if (data is IEnumerable<string> paths)
         {
-            var list = paths
-                .Where(p => !string.IsNullOrWhiteSpace(p))
-                .Distinct(StringComparer.Ordinal)
+            var list = ClipboardCapture.JoinFilePaths(paths)
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .ToList();
             return list.Count > 0 ? list : null;
         }
@@ -120,19 +121,19 @@ public class PollingClipboardMonitorService : IClipboardMonitorService
         return null;
     }
 
-    public async void SetText(string text)
+    public async Task SetTextAsync(string text)
     {
         await _clipboard.SetTextAsync(text);
     }
 
-    public async void SetImage(byte[] imageBytes)
+    public async Task SetImageAsync(byte[] imageBytes)
     {
         var dataObject = new DataObject();
         dataObject.Set("public.png", imageBytes);
         await _clipboard.SetDataObjectAsync(dataObject);
     }
 
-    public async void SetFiles(IReadOnlyList<string> filePaths)
+    public async Task SetFilesAsync(IReadOnlyList<string> filePaths)
     {
         var dataObject = new DataObject();
         dataObject.Set(DataFormats.FileNames, filePaths.ToList());

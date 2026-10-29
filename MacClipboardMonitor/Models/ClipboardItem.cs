@@ -20,8 +20,18 @@ public class ClipboardItem : INotifyPropertyChanged
     public int Id { get; set; }
     public string Content { get; set; } = string.Empty;
 
-    // Guardamos los bytes en SQLite
-    public byte[]? ImageBytes { get; set; }
+    // Guardamos los bytes en SQLite. Invalidar el bitmap cacheado al cambiar.
+    private byte[]? _imageBytes;
+    public byte[]? ImageBytes
+    {
+        get => _imageBytes;
+        set
+        {
+            if (ReferenceEquals(_imageBytes, value)) return;
+            DisposeImage();
+            _imageBytes = value;
+        }
+    }
     private DateTime _createdAt;
     public DateTime CreatedAt
     {
@@ -160,18 +170,38 @@ public class ClipboardItem : INotifyPropertyChanged
             catch { return p; }
         }));
 
+    private Bitmap? _avaloniaImage;
+    private bool _avaloniaImageResolved;
+
     [NotMapped]
-    public Bitmap? AvaloniaImage 
+    public Bitmap? AvaloniaImage
     {
-        get 
+        get
         {
             if (!IsImage) return null;
-            try 
+            if (_avaloniaImageResolved) return _avaloniaImage;
+
+            _avaloniaImageResolved = true;
+            if (ImageBytes is not { Length: > 0 }) return null;
+
+            try
             {
-                using var stream = new MemoryStream(ImageBytes!);
-                return new Bitmap(stream);
+                using var stream = new MemoryStream(ImageBytes);
+                _avaloniaImage = new Bitmap(stream);
             }
-            catch { return null; }
+            catch
+            {
+                _avaloniaImage = null;
+            }
+
+            return _avaloniaImage;
         }
+    }
+
+    public void DisposeImage()
+    {
+        _avaloniaImage?.Dispose();
+        _avaloniaImage = null;
+        _avaloniaImageResolved = false;
     }
 }

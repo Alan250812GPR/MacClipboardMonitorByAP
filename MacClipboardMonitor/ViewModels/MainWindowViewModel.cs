@@ -7,6 +7,7 @@ using System.Reactive.Linq;
 using System.Threading.Tasks;
 using Avalonia.Input;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using MacClipboardMonitor.Models;
 using MacClipboardMonitor.Repositories;
 using MacClipboardMonitor.Services;
@@ -26,6 +27,8 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     private readonly IDisposable _purgeSubscription;
     private readonly IDisposable? _filterSubscription;
     private readonly SourceList<ClipboardItem> _historyList = new SourceList<ClipboardItem>();
+    private readonly Task _historyLoaded;
+    private bool _disposed;
     
     public ICommand ClearHistoryCommand { get; }
     public ICommand DeleteItemCommand { get; }
@@ -38,7 +41,6 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     public ICommand CloseSettingsCommand { get; }
     public ICommand StartRecordingCommand { get; }
     public ICommand RestoreDefaultHotkeyCommand { get; }
-    public ICommand EncryptItemCommand { get; }
     public ICommand RequestEncryptCommand { get; }
     public ICommand ConfirmEncryptCommand { get; }
     public ICommand CancelTagDialogCommand { get; }
@@ -233,7 +235,7 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
             .Bind(out _history)
             .Subscribe();
 
-        LoadHistoryAsync();
+        _historyLoaded = LoadHistoryAsync();
 
         ClearSearchCommand = ReactiveCommand.Create(() => SearchText = string.Empty);
 
@@ -252,7 +254,6 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         VerifyPermissionCommand = ReactiveCommand.CreateFromTask(VerifyPermissionAsync);
         SkipWelcomeCommand = ReactiveCommand.Create(SkipWelcome);
 
-        EncryptItemCommand = ReactiveCommand.CreateFromTask<ClipboardItem>(EncryptItemAsync);
         RequestEncryptCommand = ReactiveCommand.Create<ClipboardItem>(RequestEncrypt);
         ConfirmEncryptCommand = ReactiveCommand.CreateFromTask(ConfirmEncryptAsync);
         CancelTagDialogCommand = ReactiveCommand.Create(CloseTagDialog);
@@ -263,121 +264,194 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
         {
             if (item == null) return;
             await _repository.DeleteItemAsync(item.Id);
-            _historyList.Remove(item);
+            RemoveFromHistory(item);
         });
 
         ClearHistoryCommand = ReactiveCommand.CreateFromTask(async () =>
         {
             await _repository.ClearAllAsync();
-            _historyList.Clear();
+            var encrypted = _historyList.Items.Where(x => x.IsEncrypted).ToList();
+            foreach (var item in _historyList.Items.Where(x => !x.IsEncrypted).ToList())
+                item.DisposeImage();
+
+            _historyList.Edit(inner =>
+            {
+                inner.Clear();
+                inner.AddRange(encrypted);
+            });
         });
 
+        // Concat serializa el procesamiento y el try/catch evita excepciones no observadas.
         _clipboardSubscription = _clipboardService.ClipboardChanged
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(async capture =>
+            .Select(capture => Observable.FromAsync(async () =>
             {
-                // Supresión de re-captura: si acabamos de copiar un secreto descifrado,
-                // no lo volvemos a guardar como texto plano.
-                if (capture.Type == ClipboardItemType.Texto && _suppressedSecretFingerprint is not null)
+                await _historyLoaded;
+                await Dispatcher.UIThread.InvokeAsync(async () =>
                 {
-                    var suppressed = _suppressedSecretFingerprint;
-                    _suppressedSecretFingerprint = null;
-
-                    if (HashText(capture.Text ?? string.Empty) == suppressed) return;
-                }
-
-                var newItem = new ClipboardItem
-                {
-                    Type = capture.Type,
-                    Content = capture.Text ?? string.Empty,
-                    ImageBytes = capture.ImageBytes,
-                    ImageHash = capture.ImageHash,
-                    FilePaths = capture.FilePaths is null ? null : string.Join("\n", capture.FilePaths),
-                    CreatedAt = DateTime.Now
-                };
-
-                // 1. DUPLICADOS → mover al tope (LIFO) en lugar de descartar silenciosamente
-                ClipboardItem? existing = capture.Type switch
-                {
-                    ClipboardItemType.Texto =>
-                        _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Texto &&
-                                                    string.Equals(x.Content, newItem.Content, StringComparison.OrdinalIgnoreCase)),
-                    ClipboardItemType.Imagen =>
-                        !string.IsNullOrEmpty(newItem.ImageHash)
-                            ? _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Imagen && x.ImageHash == newItem.ImageHash)
-                            : null,
-                    ClipboardItemType.Archivo =>
-                        !string.IsNullOrEmpty(newItem.FilePaths)
-                            ? _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Archivo && x.FilePaths == newItem.FilePaths)
-                            : null,
-                    _ => null
-                };
-
-                if (existing != null)
-                {
-                    // Duplicado: actualizar timestamp y dejar que el Sort reactivo lo lleve al tope (LIFO)
-                    existing.CreatedAt = DateTime.Now;
-                    await _repository.TouchAsync(existing.Id);
-                    return;
-                }
-
-                // 2. Guardamos en SQLite
-                await _repository.AddItemAsync(newItem);
-                
-                // 3. Mostramos en la UI — el Sort por CreatedAt descendente garantiza LIFO
-                _historyList.Add(newItem);
-
-                // 4. Límite global (sin tocar encriptadas) — el History está ordenado Desc por CreatedAt, el más viejo es el último
-                if (_historyList.Count > IClipboardRepository.MaxItems)
-                {
-                    var oldest = _historyList.Items
-                        .Where(x => !x.IsEncrypted)
-                        .OrderBy(x => x.CreatedAt)
-                        .FirstOrDefault();
-                    if (oldest != null)
+                    try
                     {
-                        _historyList.Remove(oldest);
+                        await ProcessCaptureAsync(capture);
                     }
-                }
-            });
+                    catch
+                    {
+                        // Fallos de persistencia no deben romper la suscripción.
+                    }
+                });
+            }))
+            .Concat()
+            .Subscribe(_ => { }, _ => { });
 
         // Limpieza periódica: elimina lo caducado de memoria y de la DB.
         _purgeSubscription = Observable.Interval(TimeSpan.FromMinutes(1))
-            .ObserveOn(RxApp.MainThreadScheduler)
-            .Subscribe(async _ =>
+            .Select(_ => Observable.FromAsync(async () =>
             {
-                var now = DateTime.Now;
-                var textCutoff = now.AddHours(-48);
-                var fileCutoff = now.AddHours(-1);
-
-                var expired = _historyList.Items
-                    .Where(x => !x.IsEncrypted &&
-                                ((x.Type == ClipboardItemType.Texto && x.CreatedAt < textCutoff) ||
-                                 (x.Type != ClipboardItemType.Texto && x.CreatedAt < fileCutoff)))
-                    .ToList();
-
-                foreach (var item in expired)
+                await Dispatcher.UIThread.InvokeAsync(async () =>
                 {
-                    _historyList.Remove(item);
-                }
-
-                await _repository.PurgeExpiredAsync();
-            });
+                    try
+                    {
+                        await PurgeExpiredLocalAndDbAsync();
+                    }
+                    catch
+                    {
+                        // Fallos de persistencia no deben romper la suscripción.
+                    }
+                });
+            }))
+            .Concat()
+            .Subscribe(_ => { }, _ => { });
     }
 
-    private async void LoadHistoryAsync()
+    private async Task LoadHistoryAsync()
     {
-        var items = await _repository.GetRecentItemsAsync(IClipboardRepository.MaxItems);
-        _historyList.Edit(inner =>
+        try
         {
-            inner.Clear();
-            inner.AddRange(items);
-        });
+            var items = await _repository.GetRecentItemsAsync(IClipboardRepository.MaxItems);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                _historyList.Edit(inner =>
+                {
+                    inner.Clear();
+                    inner.AddRange(items);
+                });
+            });
+        }
+        catch
+        {
+            // Si la DB falla al arrancar, el historial queda vacío.
+        }
+    }
+
+    private async Task ProcessCaptureAsync(ClipboardCapture capture)
+    {
+        // Supresión de re-captura: si acabamos de copiar un secreto descifrado,
+        // no lo volvemos a guardar como texto plano.
+        if (capture.Type == ClipboardItemType.Texto && _suppressedSecretFingerprint is not null)
+        {
+            var suppressed = _suppressedSecretFingerprint;
+            _suppressedSecretFingerprint = null;
+
+            if (HashText(capture.Text ?? string.Empty) == suppressed) return;
+        }
+
+        var filePaths = capture.FilePaths is null
+            ? null
+            : ClipboardCapture.JoinFilePaths(capture.FilePaths);
+        if (string.IsNullOrEmpty(filePaths)) filePaths = null;
+
+        var newItem = new ClipboardItem
+        {
+            Type = capture.Type,
+            Content = capture.Text ?? string.Empty,
+            ImageBytes = capture.ImageBytes,
+            ImageHash = capture.ImageHash,
+            FilePaths = filePaths,
+            CreatedAt = DateTime.Now
+        };
+
+        // 1. DUPLICADOS en memoria → mover al tope (LIFO)
+        var existing = FindDuplicateInMemory(newItem);
+        if (existing != null)
+        {
+            existing.CreatedAt = DateTime.Now;
+            await _repository.TouchAsync(existing.Id);
+            return;
+        }
+
+        // 2. Persistimos: el repositorio devuelve el ítem nuevo o el existente tras Touch.
+        var persisted = await _repository.AddItemAsync(newItem);
+
+        var inMemory = persisted.Id != 0
+            ? _historyList.Items.FirstOrDefault(x => x.Id == persisted.Id)
+            : null;
+        if (inMemory != null)
+        {
+            inMemory.CreatedAt = persisted.CreatedAt;
+            return;
+        }
+
+        // 3. Mostramos en la UI — el Sort por CreatedAt descendente garantiza LIFO
+        _historyList.Add(persisted);
+        TrimHistory();
+    }
+
+    private ClipboardItem? FindDuplicateInMemory(ClipboardItem newItem) =>
+        newItem.Type switch
+        {
+            ClipboardItemType.Texto =>
+                _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Texto &&
+                                                       string.Equals(x.Content, newItem.Content, StringComparison.OrdinalIgnoreCase)),
+            ClipboardItemType.Imagen =>
+                !string.IsNullOrEmpty(newItem.ImageHash)
+                    ? _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Imagen && x.ImageHash == newItem.ImageHash)
+                    : null,
+            ClipboardItemType.Archivo =>
+                !string.IsNullOrEmpty(newItem.FilePaths)
+                    ? _historyList.Items.FirstOrDefault(x => x.Type == ClipboardItemType.Archivo && x.FilePaths == newItem.FilePaths)
+                    : null,
+            _ => null
+        };
+
+    private void TrimHistory()
+    {
+        if (_historyList.Count <= IClipboardRepository.MaxItems) return;
+
+        var oldest = _historyList.Items
+            .Where(x => !x.IsEncrypted)
+            .OrderBy(x => x.CreatedAt)
+            .FirstOrDefault();
+        if (oldest != null)
+            RemoveFromHistory(oldest);
+    }
+
+    private void RemoveFromHistory(ClipboardItem item)
+    {
+        _historyList.Remove(item);
+        item.DisposeImage();
+    }
+
+    private async Task PurgeExpiredLocalAndDbAsync()
+    {
+        var now = DateTime.Now;
+        var textCutoff = now.AddHours(-48);
+        var fileCutoff = now.AddHours(-1);
+
+        var expired = _historyList.Items
+            .Where(x => !x.IsEncrypted &&
+                        ((x.Type == ClipboardItemType.Texto && x.CreatedAt < textCutoff) ||
+                         (x.Type != ClipboardItemType.Texto && x.CreatedAt < fileCutoff)))
+            .ToList();
+
+        foreach (var item in expired)
+        {
+            RemoveFromHistory(item);
+        }
+
+        await _repository.PurgeExpiredAsync();
     }
 
     private void OnItemSelected(ClipboardItem item)
     {
-        CopyItem(item);
+        _ = CopyItemAsync(item);
         PromoteItemToTop(item);
         SelectedItem = null;
     }
@@ -396,39 +470,46 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     }
 
     // Copia el elemento al portapapeles según su tipo (sin alterar la selección).
-    public void CopyItem(ClipboardItem item)
+    public async Task CopyItemAsync(ClipboardItem item)
     {
-        switch (item.Type)
+        try
         {
-            case ClipboardItemType.Texto:
-                if (item.IsEncrypted)
-                {
-                    // Descifra al vuelo y evita que el monitor re-capture el secreto.
-                    var plain = Decrypt(item.CipherText);
-                    if (plain is null) return;
+            switch (item.Type)
+            {
+                case ClipboardItemType.Texto:
+                    if (item.IsEncrypted)
+                    {
+                        // Descifra al vuelo y evita que el monitor re-capture el secreto.
+                        var plain = Decrypt(item.CipherText);
+                        if (plain is null) return;
 
-                    _clipboardService.SetText(plain);
-                    _suppressedSecretFingerprint = HashText(plain);
-                }
-                else
-                {
-                    _clipboardService.SetText(item.Content);
-                }
-                break;
+                        await _clipboardService.SetTextAsync(plain);
+                        _suppressedSecretFingerprint = HashText(plain);
+                    }
+                    else
+                    {
+                        await _clipboardService.SetTextAsync(item.Content);
+                    }
+                    break;
 
-            case ClipboardItemType.Imagen:
-                if (item.ImageBytes is { Length: > 0 })
-                {
-                    _clipboardService.SetImage(item.ImageBytes);
-                }
-                break;
+                case ClipboardItemType.Imagen:
+                    if (item.ImageBytes is { Length: > 0 })
+                    {
+                        await _clipboardService.SetImageAsync(item.ImageBytes);
+                    }
+                    break;
 
-            case ClipboardItemType.Archivo:
-                if (item.FileList.Count > 0)
-                {
-                    _clipboardService.SetFiles(item.FileList);
-                }
-                break;
+                case ClipboardItemType.Archivo:
+                    if (item.FileList.Count > 0)
+                    {
+                        await _clipboardService.SetFilesAsync(item.FileList);
+                    }
+                    break;
+            }
+        }
+        catch
+        {
+            // Fallo al escribir el portapapeles: no alterar el historial.
         }
     }
 
@@ -483,16 +564,8 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     {
         if (_pendingEncryptItem is null) return;
         var item = _pendingEncryptItem;
-        var tag = string.IsNullOrWhiteSpace(PendingTag) ? null : PendingTag.Trim();
-        var cipher = EncryptionService.Encrypt(item.Content);
-        if (cipher is null) return;
-
-        item.CipherText = cipher;
-        item.Content = string.Empty;
-        item.EncryptedTag = tag;
-        item.IsEncrypted = true;
-
-        await _repository.MarkEncryptedAsync(item);
+        item.EncryptedTag = string.IsNullOrWhiteSpace(PendingTag) ? null : PendingTag.Trim();
+        await EncryptItemAsync(item);
         CloseTagDialog();
     }
 
@@ -540,7 +613,7 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
     {
         if (item is null) return;
 
-        CopyItem(item);
+        await CopyItemAsync(item);
         PromoteItemToTop(item);
 
         // Margen para que la copia llegue al portapapeles antes de simular Cmd+V.
@@ -763,12 +836,23 @@ public class MainWindowViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+
         _clipboardSubscription?.Dispose();
         _purgeSubscription?.Dispose();
         _filterSubscription?.Dispose();
         _previewBitmap?.Dispose();
+        _previewBitmap = null;
+        PreviewImageSource = null;
         _fullPreviewBitmap?.Dispose();
-        _historyList?.Dispose();
+        _fullPreviewBitmap = null;
+        FullPreviewImageSource = null;
+
+        foreach (var item in _historyList.Items)
+            item.DisposeImage();
+
+        _historyList.Dispose();
     }
 
     /// <summary>

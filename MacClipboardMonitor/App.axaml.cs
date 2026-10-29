@@ -15,6 +15,9 @@ namespace MacClipboardMonitor;
 public partial class App : Application
 {
     private TrayIcon? _trayIcon;
+    private MainWindowViewModel? _viewModel;
+    private AppDbContext? _dbContext;
+    private MainWindow? _mainWindow;
 
     public override void Initialize()
     {
@@ -40,27 +43,55 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var config = AppConfigService.Load();
-            var mainWindow = new MainWindow(config);
-            
-            var dbContext = new AppDbContext();
-            var repository = new ClipboardRepository(dbContext);
-            var clipboardService = new PollingClipboardMonitorService(mainWindow.Clipboard!);
+            _mainWindow = new MainWindow(config);
+
+            _dbContext = new AppDbContext();
+            var repository = new ClipboardRepository(_dbContext);
+            var clipboardService = new PollingClipboardMonitorService(_mainWindow.Clipboard!);
             var pasteService = new MacPasteService();
-            
-            var viewModel = new MainWindowViewModel(clipboardService, repository, pasteService, config);
-            mainWindow.DataContext = viewModel;
-            viewModel.OnViewInitialized(); // abrir modal de bienvenida si corresponde
-            desktop.MainWindow = mainWindow;
+
+            _viewModel = new MainWindowViewModel(clipboardService, repository, pasteService, config);
+            _mainWindow.DataContext = _viewModel;
+            _viewModel.OnViewInitialized(); // abrir modal de bienvenida si corresponde
+            desktop.MainWindow = _mainWindow;
 
             // La ventana recarga el hook global cuando cambia el atajo desde Ajustes.
-            viewModel.HotkeyChanged += mainWindow.ReloadHotkeyConfig;
+            _viewModel.HotkeyChanged += _mainWindow.ReloadHotkeyConfig;
 
-            SetupTrayIcon(desktop, mainWindow, viewModel);
-            
+            SetupTrayIcon(desktop, _mainWindow, _viewModel);
+
             AutoStartManager.RegisterAutoStart();
+
+            desktop.Exit += (_, _) => ReleaseRuntime();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void ReleaseRuntime()
+    {
+        try
+        {
+            if (_viewModel is not null && _mainWindow is not null)
+            {
+                _viewModel.HotkeyChanged -= _mainWindow.ReloadHotkeyConfig;
+            }
+
+            _viewModel?.Dispose();
+            _viewModel = null;
+
+            _dbContext?.Dispose();
+            _dbContext = null;
+
+            _trayIcon?.Dispose();
+            _trayIcon = null;
+
+            VersionGuard.Release();
+        }
+        catch
+        {
+            // Cierre: no impedir la salida.
+        }
     }
 
     private void SetupTrayIcon(IClassicDesktopStyleApplicationLifetime desktop, MainWindow window, MainWindowViewModel viewModel)

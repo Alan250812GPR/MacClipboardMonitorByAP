@@ -31,7 +31,7 @@
 - **Smart deduplication**
   - Text: `Content` case-insensitive (`OrdinalIgnoreCase`)
   - Image: `SHA-256` hash (`ImageHash`)
-  - File: exact `FilePaths` match
+  - File: sorted `FilePaths` match (same set of files is one entry regardless of order)
 - **Universal retention**
   | Type | Deduplication | Expiry | Global limit |
   |---|---|---|---|
@@ -53,7 +53,8 @@
 ### Actions
 - **Single click** — copy to clipboard (encrypted items are decrypted on the fly; re-capture of the plain secret is suppressed via SHA-256 fingerprint).
 - **Double-click** — copy and paste directly into the active application (`CGEvent Cmd+V`). Requires Accessibility permission.
-- **Per-item delete** and **Clear history**.
+- **Per-item delete** and **Clear history** (encrypted entries are kept until deleted one by one).
+- **Encryption** hides text in SQLite with a machine-local AES-256 key (`~/.MacClipboardMonitor.key`). It is not a vault against someone with access to this Mac account. Copying an encrypted item puts the secret back on the system clipboard in plain text.
 
 ### System Integration
 - **Configurable global hotkey** — default `Ctrl + Cmd + V` via `SharpHook` (`TaskPoolGlobalHook`). Reconfigurable from Settings (⚙️) to any `Ctrl`/`Cmd` + letter or `F1–F12`. Persisted in `~/MacClipboardMonitor.config.json`.
@@ -192,7 +193,7 @@ MacClipboardMonitor/
 │   ├── MacPasteService.cs          # CGEvent Cmd+V
 │   ├── CodeDetectionService.cs
 │   ├── AppConfigService.cs
-│   ├── EncryptionService.cs        # AES-256-CBC, PBKDF2
+│   ├── EncryptionService.cs        # AES-256-CBC, machine-local key (legacy PBKDF2 decrypt)
 │   └── AutoStartManager.cs
 ├── Data/AppDbContext.cs
 ├── Assets/tray.png, avalonia-logo.ico

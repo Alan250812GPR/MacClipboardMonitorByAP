@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
-using MacClipboardMonitor.Models;
+using System.Threading.Tasks;
 
 namespace MacClipboardMonitor.Services;
 
 public interface IClipboardMonitorService
 {
     IObservable<ClipboardCapture> ClipboardChanged { get; }
-    void SetText(string text);
-    void SetImage(byte[] imageBytes);
-    void SetFiles(IReadOnlyList<string> filePaths);
+    Task SetTextAsync(string text);
+    Task SetImageAsync(byte[] imageBytes);
+    Task SetFilesAsync(IReadOnlyList<string> filePaths);
 }

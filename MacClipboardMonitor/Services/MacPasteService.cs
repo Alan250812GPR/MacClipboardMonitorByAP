@@ -28,6 +28,7 @@ public class MacPasteService : IPasteService
         await Task.Delay(delayMilliseconds);
 
         PostKey(KeyV, keyDown: true);
+        await Task.Delay(20);
         PostKey(KeyV, keyDown: false);
     }
 

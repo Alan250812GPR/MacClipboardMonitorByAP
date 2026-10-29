@@ -28,6 +28,7 @@ public partial class MainWindow : Window
     private bool _needCmd = true;
     private bool _needShift;
     private bool _needAlt;
+    private bool _hotkeyLatched;
 
     // Constructor sin parámetros requerido por el cargador de XAML compilado.
     public MainWindow() : this(AppConfigService.Load())
@@ -139,6 +140,10 @@ public partial class MainWindow : Window
         
         if (e.Data.KeyCode == _hotkeyCode && MatchesModifiers())
         {
+            // Ignorar repetición al mantener la tecla: solo el primer key-down alterna.
+            if (_hotkeyLatched) return;
+            _hotkeyLatched = true;
+
             Dispatcher.UIThread.Post(() =>
             {
                 if (IsVisible)
@@ -168,6 +173,9 @@ public partial class MainWindow : Window
 
         if (e.Data.KeyCode == KeyCode.VcLeftAlt || e.Data.KeyCode == KeyCode.VcRightAlt) 
             _isAltPressed = false;
+
+        if (e.Data.KeyCode == _hotkeyCode)
+            _hotkeyLatched = false;
     }
     
     // Navegación por teclado: ↑↓ mueven la selección, Enter copia, Esc cierra vistas u oculta.
@@ -213,7 +221,7 @@ public partial class MainWindow : Window
             case Key.Enter:
                 if (vm.SelectedItem is { } item)
                 {
-                    vm.CopyItem(item);
+                    _ = vm.CopyItemAsync(item);
                 }
                 e.Handled = true;
                 break;
